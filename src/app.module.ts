@@ -9,6 +9,7 @@ import { AuthModule } from './auth/auth.module.js';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from './auth/guards/roles.guard.js';
 import { getDatabaseConfig } from './config/database.config.js';
+import { NoticesModule } from './notices/notices.module.js';
 import { OverviewModule } from './overview/overview.module.js';
 import { TeachersModule } from './teachers/teachers.module.js';
 
@@ -34,6 +35,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     AuthModule,
     OverviewModule,
     TeachersModule,
+    NoticesModule,
   ],
   controllers: [AppController],
   providers: [
