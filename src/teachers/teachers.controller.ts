@@ -13,6 +13,8 @@ import {
 } from '@nestjs/common';
 import { PaginatedDto } from '../common/dto/paginated.dto.js';
 import type { GridFilterModel } from '../common/utils/filter.util.js';
+import { AllowedRoles } from '../decorators/roles.decorator.js';
+import { Role } from '../enums/role.enum.js';
 import { SortDirection } from '../enums/sort-direction.enum.js';
 import { TeacherStatus } from '../enums/status.enum.js';
 import { CreateTeacherDto } from './dto/create-teacher.dto.js';
@@ -24,6 +26,7 @@ import {
 } from './teachers.service.js';
 
 @Controller('teachers')
+@AllowedRoles(Role.ADMIN, Role.SUPER_ADMIN)
 export class TeachersController {
   constructor(
     @Inject(TeachersService)
