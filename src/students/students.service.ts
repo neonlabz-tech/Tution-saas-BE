@@ -12,15 +12,16 @@ import { type Connection, type Model, Types } from 'mongoose';
 import {
   AttendanceRecord,
   type AttendanceRecordDocument,
-} from '../attendance/schemas/attendance-record.schema.js';
+} from '../attendance/schemas/attendance.schema.js';
+import { AttendanceStatus, TxType } from '../enums/status.enum.js';
+import {
+  Transaction,
+  type TransactionDocument,
+} from '../finance/schemas/transaction.schema.js';
 import {
   CourseModule,
   type CourseModuleDocument,
 } from '../modules/schemas/module.schema.js';
-import {
-  Transaction,
-  type TransactionDocument,
-} from '../payments/schemas/transaction.schema.js';
 import type { CreateStudentDto } from './dto/create-student.dto.js';
 import type { StudentQueryDto } from './dto/student-query.dto.js';
 import type { UpdateStudentDto } from './dto/update-student.dto.js';
@@ -483,7 +484,7 @@ export class StudentsService {
         : Promise.resolve([]),
       this.transactionModel
         .find({
-          type: 'income',
+          type: TxType.INCOME,
           category: 'Tuition fees',
           studentId: { $in: studentIds },
         })
@@ -586,7 +587,7 @@ export class StudentsService {
 
     const feeTotal = populatedModules.reduce((sum, mod) => sum + mod.fee, 0);
     const paidTotal = paymentDocs
-      .filter((tx) => tx.type === 'income' && tx.category === 'Tuition fees')
+      .filter((tx) => tx.type === TxType.INCOME && tx.category === 'Tuition fees')
       .reduce((sum, tx) => sum + tx.amount, 0);
     const outstanding = Math.max(0, feeTotal - paidTotal);
 
@@ -596,10 +597,10 @@ export class StudentsService {
     let excused = 0;
 
     for (const record of attendanceDocs) {
-      if (record.status === 'present') present += 1;
-      else if (record.status === 'late') late += 1;
-      else if (record.status === 'absent') absent += 1;
-      else if (record.status === 'excused') excused += 1;
+      if (record.status === AttendanceStatus.PRESENT) present += 1;
+      else if (record.status === AttendanceStatus.LATE) late += 1;
+      else if (record.status === AttendanceStatus.ABSENT) absent += 1;
+      else if (record.status === AttendanceStatus.EXCUSED) excused += 1;
     }
 
     const nonExcusedCount = present + late + absent;

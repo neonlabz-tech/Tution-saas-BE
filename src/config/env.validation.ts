@@ -3,6 +3,7 @@ export interface EnvironmentVariables {
   PORT?: string;
   MONGODB_URI?: string;
   MONGO_URI?: string;
+  MONGODB_DB_NAME?: string;
   MONGODB_DNS_SERVERS?: string;
   INSTITUTE_NAME?: string;
   APP_NAME?: string;

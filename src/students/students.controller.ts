@@ -11,6 +11,7 @@ import {
   Query,
 } from '@nestjs/common';
 import {
+  ApiBearerAuth,
   ApiBody,
   ApiOperation,
   ApiParam,
@@ -18,6 +19,8 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { AllowedRoles } from '../decorators/roles.decorator.js';
+import { Role } from '../enums/role.enum.js';
 import {
   createStudentSchema,
   type CreateStudentDto,
@@ -37,6 +40,8 @@ import {
 import { StudentsService } from './students.service.js';
 
 @ApiTags('Students')
+@ApiBearerAuth('access-token')
+@AllowedRoles(Role.ADMIN, Role.SUPER_ADMIN)
 @Controller('students')
 export class StudentsController {
   constructor(private readonly studentsService: StudentsService) {}

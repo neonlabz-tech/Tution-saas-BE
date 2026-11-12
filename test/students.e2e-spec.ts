@@ -8,14 +8,14 @@ import { getConnectionToken, getModelToken } from '@nestjs/mongoose';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { AttendanceRecord } from '../src/attendance/schemas/attendance-record.schema.js';
+import { AttendanceRecord } from '../src/attendance/schemas/attendance.schema.js';
 import {
   AllExceptionsFilter,
   HttpExceptionFilter,
 } from '../src/common/filters/index.js';
 import { ResponseInterceptor } from '../src/common/interceptors/index.js';
+import { Transaction } from '../src/finance/schemas/transaction.schema.js';
 import { CourseModule } from '../src/modules/schemas/module.schema.js';
-import { Transaction } from '../src/payments/schemas/transaction.schema.js';
 import { Counter } from '../src/students/schemas/counter.schema.js';
 import { Student } from '../src/students/schemas/student.schema.js';
 import { StudentsController } from '../src/students/students.controller.js';
