@@ -13,10 +13,10 @@ export type StudentDocument = HydratedDocument<Student>;
 
 @Schema({ timestamps: true, collection: 'students' })
 export class Student {
-  @Prop({ required: true, unique: true })
+  @Prop({ required: true, unique: true, index: true, trim: true })
   id!: string;
 
-  @Prop({ required: true, unique: true })
+  @Prop({ required: true, unique: true, trim: true })
   ref!: string;
 
   @Prop({ required: true, trim: true })

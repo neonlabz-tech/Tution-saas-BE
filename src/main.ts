@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Logger,
   StandardSchemaValidationPipe,
+  ValidationPipe,
 } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -59,6 +60,11 @@ async function bootstrap() {
             message: issue.message,
           })),
         }),
+    }),
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
     }),
   );
 
