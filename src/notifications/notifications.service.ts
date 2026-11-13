@@ -88,6 +88,18 @@ export class NotificationsService {
     soon.setDate(soon.getDate() + 2);
     const soonDate = toISODate(soon);
 
+    const tenDaysAgo = new Date(now);
+    tenDaysAgo.setDate(tenDaysAgo.getDate() - 10);
+    const tenDaysAgoISO = toISODate(tenDaysAgo);
+
+    // Automatically delete notifications older than 10 days
+    if (typeof this.notificationModel.deleteMany === 'function') {
+      await this.notificationModel
+        .deleteMany({ createdAt: { $lt: tenDaysAgo } })
+        .exec()
+        .catch(() => {});
+    }
+
     const [
       persisted,
       notices,
@@ -98,9 +110,14 @@ export class NotificationsService {
       settings,
     ] = await Promise.all([
       this.notificationModel
-        .find()
+        .find({
+          $or: [
+            { createdAt: { $gte: tenDaysAgo } },
+            { createdAt: { $exists: false } },
+          ],
+        })
         .sort({ createdAt: -1 })
-        .limit(20)
+        .limit(50)
         .lean<Notification[]>()
         .exec(),
       this.noticeModel.find().lean<LeanNotice[]>().exec(),
@@ -259,7 +276,12 @@ export class NotificationsService {
     }
 
     students
-      .filter((s) => s.enrollmentDate === today)
+      .filter(
+        (s) =>
+          s.enrollmentDate &&
+          s.enrollmentDate >= tenDaysAgoISO &&
+          s.enrollmentDate <= today,
+      )
       .slice(0, 5)
       .forEach((s) => {
         const itemId = `stu_reg_${s.id}`;
@@ -267,7 +289,7 @@ export class NotificationsService {
           id: itemId,
           type: 'student',
           title: `New Student Registration: ${s.fullName}`,
-          subtitle: `Enrolled today · ${s.batch || 'Batch'}`,
+          subtitle: `${s.enrollmentDate === today ? 'Enrolled today' : `Enrolled ${s.enrollmentDate}`} · ${s.batch || 'Batch'}`,
           link: '/dashboard/students',
           read: readIds.has(itemId),
           persisted: false,
@@ -277,7 +299,12 @@ export class NotificationsService {
     if (prefs.payments) {
       const studentNameMap = new Map(students.map((s) => [s.id, s.fullName]));
       transactions
-        .filter((tx) => tx.type === TxType.INCOME && tx.date === today)
+        .filter(
+          (tx) =>
+            tx.type === TxType.INCOME &&
+            tx.date >= tenDaysAgoISO &&
+            tx.date <= today,
+        )
         .slice(0, 5)
         .forEach((tx) => {
           const itemId = `pay_rec_${tx.id}`;
@@ -295,6 +322,12 @@ export class NotificationsService {
           });
         });
     }
+
+    // Sort unread notifications first at top, read notifications below unread ones
+    items.sort((a, b) => {
+      if (a.read === b.read) return 0;
+      return a.read ? 1 : -1;
+    });
 
     const unreadCount = items.filter((i) => !i.read).length;
     return { items, unreadCount };

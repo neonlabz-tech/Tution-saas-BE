@@ -45,6 +45,7 @@ describe('NotificationsService', () => {
       updateOne: vi.fn(),
       updateMany: vi.fn(),
       deleteOne: vi.fn(),
+      deleteMany: vi.fn().mockReturnValue({ exec: vi.fn().mockResolvedValue({ deletedCount: 0 }) }),
     };
     noticeModel = { find: vi.fn() };
     onlineClassModel = { find: vi.fn() };
