@@ -7,7 +7,7 @@ async function bootstrap() {
     instrument: ObserveInstrument,
   });
   app.enableCors({
-    origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
+    origin: ['http://localhost:3000', 'http://127.0.0.1:3000'],
   });
   app.useGlobalPipes(
     new ValidationPipe({
@@ -18,7 +18,6 @@ async function bootstrap() {
   );
   const port = process.env.PORT ?? 4000;
   await app.listen(port);
-  console.log(`API:     http://localhost:${port}`);
-  console.log(`Website: http://localhost:5173/#/dashboard/notices`);
+  console.log(`API: http://localhost:${port}`);
 }
 await bootstrap();

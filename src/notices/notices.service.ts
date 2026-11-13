@@ -8,16 +8,10 @@ import { isValidObjectId, Model } from 'mongoose';
 import { CreateNoticeDto } from './dto/create-notice.dto.js';
 import { Notice, type NoticeDocument } from './schemas/notice.schema.js';
 
-export type NoticeDto = {
+export class NoticeDto extends CreateNoticeDto {
   id: string;
-  title: string;
-  description: string;
-  batches: string[];
-  publishDate: string;
-  expiryDate: string;
-  priority: Notice['priority'];
-  status: Notice['status'];
-};
+  declare batches: string[];
+}
 
 @Injectable()
 export class NoticesService {
@@ -74,15 +68,15 @@ export class NoticesService {
   }
 
   private toDto(doc: NoticeDocument): NoticeDto {
-    return {
-      id: doc.id || doc._id.toString(),
-      title: doc.title,
-      description: doc.description ?? '',
-      batches: doc.batches ?? [],
-      publishDate: doc.publishDate,
-      expiryDate: doc.expiryDate,
-      priority: doc.priority,
-      status: doc.status,
-    };
+    const dto = new NoticeDto();
+    dto.id = doc.id || doc._id.toString();
+    dto.title = doc.title;
+    dto.description = doc.description ?? '';
+    dto.batches = doc.batches ?? [];
+    dto.publishDate = doc.publishDate;
+    dto.expiryDate = doc.expiryDate;
+    dto.priority = doc.priority;
+    dto.status = doc.status;
+    return dto;
   }
 }
