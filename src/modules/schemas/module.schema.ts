@@ -4,7 +4,12 @@ import { ModuleStatus } from '../../enums/status.enum.js';
 
 export type CourseModuleDocument = HydratedDocument<CourseModule>;
 
-@Schema({ timestamps: true, collection: 'modules' })
+@Schema({
+  timestamps: true,
+  collection: 'modules',
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true },
+})
 export class CourseModule {
   @Prop({ required: true, unique: true, index: true, trim: true })
   id!: string;
@@ -39,3 +44,11 @@ export class CourseModule {
 }
 
 export const CourseModuleSchema = SchemaFactory.createForClass(CourseModule);
+
+CourseModuleSchema.virtual('teacher', {
+  ref: 'Teacher',
+  localField: 'teacherId',
+  foreignField: 'id',
+  justOne: true,
+});
+

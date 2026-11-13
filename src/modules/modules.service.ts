@@ -62,6 +62,20 @@ export interface ModuleDetailResponse extends ModuleListItem {
   enrolledStudents: EnrolledStudentSummary[];
 }
 
+export interface CreatedModuleResponse {
+  id: string;
+  code: string;
+  name: string;
+  description: string;
+  fee: number;
+  duration: string;
+  teacherId: string | null;
+  batches: string[];
+  status: ModuleStatus;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
 export interface SyncEnrollmentsResponse {
   moduleId: string;
   enrolledCount: number;
@@ -236,7 +250,7 @@ export class ModulesService {
     };
   }
 
-  async create(dto: CreateModuleDto): Promise<ModuleDetailResponse> {
+  async create(dto: CreateModuleDto): Promise<CreatedModuleResponse> {
     const code = dto.code.trim().toUpperCase();
 
     const existingCode = await this.moduleModel.findOne({ code }).lean();
@@ -244,18 +258,16 @@ export class ModulesService {
       throw new ConflictException(`Module with code "${code}" already exists`);
     }
 
-    let teacher: { id: string; fullName: string; email?: string } | null = null;
     if (dto.teacherId) {
       const t = await this.teacherModel
         .findOne({ id: dto.teacherId })
-        .select('id fullName email')
+        .select('id')
         .lean();
       if (!t) {
         throw new NotFoundException(
           `Teacher with ID "${dto.teacherId}" not found`,
         );
       }
-      teacher = { id: t.id, fullName: t.fullName, email: t.email };
     }
 
     const id = await this.generateUniqueModuleId();
@@ -289,12 +301,8 @@ export class ModulesService {
       fee: created.fee,
       duration: created.duration ?? '',
       teacherId: created.teacherId ?? null,
-      teacher,
       batches: created.batches ?? [],
       status: created.status as ModuleStatus,
-      enrolledCount: 0,
-      revenuePotential: 0,
-      enrolledStudents: [],
       createdAt: (created as { createdAt?: Date }).createdAt,
       updatedAt: (created as { updatedAt?: Date }).updatedAt,
     };
