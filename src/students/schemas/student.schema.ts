@@ -1,57 +1,65 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import type { HydratedDocument } from 'mongoose';
 
+export const STUDENT_STATUSES = [
+  'pending',
+  'active',
+  'inactive',
+  'graduated',
+] as const;
+
+export type StudentStatus = (typeof STUDENT_STATUSES)[number];
 export type StudentDocument = HydratedDocument<Student>;
 
-@Schema({
-  timestamps: true,
-  collection: 'students',
-  autoCreate: false,
-  autoIndex: false,
-})
+@Schema({ timestamps: true, collection: 'students' })
 export class Student {
   @Prop({ required: true, unique: true, index: true, trim: true })
-  id: string;
+  id!: string;
 
   @Prop({ required: true, unique: true, trim: true })
-  ref: string;
+  ref!: string;
 
   @Prop({ required: true, trim: true })
-  fullName: string;
+  fullName!: string;
 
   @Prop({ required: true, unique: true, lowercase: true, trim: true })
-  email: string;
+  email!: string;
 
   @Prop({ required: true, trim: true })
-  phone: string;
+  phone!: string;
 
   @Prop({ required: true })
-  dob: string;
+  dob!: string;
 
   @Prop({ required: true, trim: true })
-  address: string;
+  address!: string;
 
   @Prop({ required: true, trim: true })
-  guardianName: string;
+  guardianName!: string;
 
   @Prop({ required: true, trim: true })
-  guardianPhone: string;
+  guardianPhone!: string;
 
-  @Prop({ required: true, trim: true })
-  batch: string;
+  @Prop({ required: true, trim: true, index: true })
+  batch!: string;
 
-  @Prop({ type: [String], default: [], index: true })
-  moduleIds: string[];
+  @Prop({ type: [String], required: true, default: [], index: true })
+  moduleIds!: string[];
 
   @Prop({ required: true })
-  enrollmentDate: string;
+  enrollmentDate!: string;
 
   @Prop({
     type: String,
-    enum: ['active', 'inactive', 'graduated'],
-    default: 'active',
+    required: true,
+    enum: STUDENT_STATUSES,
+    default: 'pending',
+    index: true,
   })
-  status: 'active' | 'inactive' | 'graduated';
+  status!: StudentStatus;
+
+  @Prop({ type: Date })
+  qrRotatedAt?: Date;
 }
 
 export const StudentSchema = SchemaFactory.createForClass(Student);

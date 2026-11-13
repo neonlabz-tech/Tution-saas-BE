@@ -4,43 +4,38 @@ import { ModuleStatus } from '../../enums/status.enum.js';
 
 export type CourseModuleDocument = HydratedDocument<CourseModule>;
 
-@Schema({
-  timestamps: true,
-  collection: 'modules',
-  autoCreate: false,
-  autoIndex: false,
-})
+@Schema({ timestamps: true, collection: 'modules' })
 export class CourseModule {
   @Prop({ required: true, unique: true, index: true, trim: true })
-  id: string;
+  id!: string;
 
   @Prop({ required: true, unique: true, trim: true })
-  code: string;
+  code!: string;
 
   @Prop({ required: true, trim: true })
-  name: string;
+  name!: string;
 
-  @Prop({ default: '', trim: true })
-  description: string;
+  @Prop({ type: String, default: '', trim: true })
+  description?: string;
 
-  @Prop({ required: true, min: 0 })
-  fee: number;
+  @Prop({ type: Number, required: true, min: 0 })
+  fee!: number;
 
-  @Prop({ required: true, trim: true })
-  duration: string;
+  @Prop({ type: String, default: '', trim: true })
+  duration?: string;
 
   @Prop({ type: String, default: null, index: true })
-  teacherId: string | null;
+  teacherId?: string | null;
 
   @Prop({ type: [String], default: [] })
-  batches: string[];
+  batches?: string[];
 
   @Prop({
     type: String,
     enum: Object.values(ModuleStatus),
     default: ModuleStatus.ACTIVE,
   })
-  status: ModuleStatus;
+  status!: ModuleStatus;
 }
 
 export const CourseModuleSchema = SchemaFactory.createForClass(CourseModule);
