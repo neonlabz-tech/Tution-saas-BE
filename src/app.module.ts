@@ -14,6 +14,8 @@ import { ResponseInterceptor } from './common/interceptors/index.js';
 import { getDatabaseConfig } from './config/database.config.js';
 import { validateEnvironment } from './config/env.validation.js';
 import { MailModule } from './mail/mail.module.js';
+import { FinanceModule } from './finance/finance.module.js';
+import { ModulesModule } from './modules/modules.module.js';
 import { OverviewModule } from './overview/overview.module.js';
 import { StudentsModule } from './students/students.module.js';
 import { TeachersModule } from './teachers/teachers.module.js';
@@ -61,6 +63,8 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     TeachersModule,
     MailModule,
     StudentsModule,
+    ModulesModule,
+    FinanceModule,
   ],
   controllers: [AppController],
   providers: [
