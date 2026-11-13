@@ -11,6 +11,7 @@ import { JwtService } from '@nestjs/jwt';
 import { getAuthConfig } from '../../config/auth.config.js';
 import type { AuthenticatedUser } from '../../decorators/current-user.decorator.js';
 import { IS_PUBLIC_KEY } from '../../decorators/public.decorator.js';
+import { AUTH_COOKIE_NAME, extractCookieToken } from '../auth-cookie.js';
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
@@ -28,16 +29,21 @@ export class JwtAuthGuard implements CanActivate {
     if (isPublic) return true;
 
     const request = context.switchToHttp().getRequest<{
-      headers?: { authorization?: string };
+      headers?: { authorization?: string; cookie?: string };
+      cookies?: Record<string, string | undefined>;
       user?: AuthenticatedUser;
     }>();
 
+    const cookieToken =
+      request.cookies?.[AUTH_COOKIE_NAME] ??
+      extractCookieToken(request.headers?.cookie);
     const authHeader = request.headers?.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      throw new UnauthorizedException('Missing or invalid authorization token');
-    }
+    const bearerToken =
+      authHeader && authHeader.startsWith('Bearer ')
+        ? authHeader.slice(7).trim()
+        : null;
+    const token = cookieToken || bearerToken;
 
-    const token = authHeader.slice(7).trim();
     if (!token) {
       throw new UnauthorizedException('Missing or invalid authorization token');
     }

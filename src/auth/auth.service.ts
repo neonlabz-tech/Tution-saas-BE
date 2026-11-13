@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Inject,
@@ -12,14 +13,22 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { InjectModel } from '@nestjs/mongoose';
 import bcrypt from 'bcryptjs';
+import { randomBytes } from 'node:crypto';
 import type { Model } from 'mongoose';
 import { getAuthConfig } from '../config/auth.config.js';
 import type { AuthenticatedUser } from '../decorators/current-user.decorator.js';
 import { Role } from '../enums/role.enum.js';
+import {
+  Notification,
+  type NotificationDocument,
+} from '../notifications/schemas/notification.schema.js';
 import { User, type UserDocument } from '../users/schemas/user.schema.js';
 import { ChangePasswordDto } from './dto/change-password.dto.js';
+import { ForgotPasswordDto } from './dto/forgot-password.dto.js';
 import { LoginDto } from './dto/login.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
+import { ResetPasswordDto } from './dto/reset-password.dto.js';
+import { MailService } from './mail.service.js';
 
 export interface LoginConfigResponse {
   authEnabled: boolean;
@@ -54,8 +63,11 @@ export class AuthService implements OnModuleInit {
 
   constructor(
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
+    @InjectModel(Notification.name)
+    private readonly notificationModel: Model<NotificationDocument>,
     @Inject(JwtService) private readonly jwtService: JwtService,
     @Inject(ConfigService) private readonly configService: ConfigService,
+    @Inject(MailService) private readonly mailService: MailService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -134,8 +146,9 @@ export class AuthService implements OnModuleInit {
 
   async register(dto: RegisterDto): Promise<AuthTokenResponse> {
     const cfg = getAuthConfig(this.configService);
-    if (!cfg.allowSelfRegistration) {
-      throw new ForbiddenException('Self-registration is disabled');
+    const isStudent = dto.role === Role.STUDENT;
+    if (!cfg.allowSelfRegistration && !isStudent) {
+      throw new ForbiddenException('Admin self-registration is disabled');
     }
 
     const normalizedEmail = dto.email.trim().toLowerCase();
@@ -160,6 +173,24 @@ export class AuthService implements OnModuleInit {
       isActive: true,
       lastLoginAt: new Date(),
     });
+
+    if (created.role === Role.STUDENT) {
+      await this.notificationModel
+        .create({
+          id: `notif_stu_${created.id}`,
+          type: 'student',
+          title: `New Student Registration: ${created.fullName}`,
+          subtitle: `${created.email} registered an online student account`,
+          link: '/dashboard/students',
+          read: false,
+          recipientId: null,
+        })
+        .catch((err) => {
+          this.logger.warn(
+            `Failed to create student registration notification: ${err}`,
+          );
+        });
+    }
 
     return this.buildTokenResponse(created);
   }
@@ -203,6 +234,87 @@ export class AuthService implements OnModuleInit {
     await user.save();
 
     return { updated: true };
+  }
+
+  async forgotPassword(dto: ForgotPasswordDto): Promise<{ message: string; devResetUrl?: string }> {
+    const email = dto.email.trim().toLowerCase();
+    const user = await this.userModel
+      .findOne({ email })
+      .select('+passwordHash +resetPasswordToken +resetPasswordExpires')
+      .exec();
+
+    // For security and privacy, only active admins can reset their password via this flow.
+    // If user is not found or not an admin, return the same safe success message to prevent user enumeration.
+    const isAdmin =
+      user &&
+      user.isActive &&
+      (user.role === Role.ADMIN || user.role === Role.SUPER_ADMIN);
+
+    if (!isAdmin) {
+      return {
+        message:
+          'If an administrator account with that email exists, a password reset link has been sent.',
+      };
+    }
+
+    const token = randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour expiration
+
+    user.resetPasswordToken = token;
+    user.resetPasswordExpires = expiresAt;
+    await user.save();
+
+    const cfg = getAuthConfig(this.configService);
+    const resetUrl = `${cfg.frontendUrl}/#/reset-password?token=${token}`;
+
+    await this.mailService.sendPasswordResetEmail({
+      to: user.email,
+      fullName: user.fullName,
+      resetUrl,
+    });
+
+    return {
+      message:
+        'If an administrator account with that email exists, a password reset link has been sent.',
+      ...(process.env.NODE_ENV !== 'production' && !cfg.resendApiKey
+        ? { devResetUrl: resetUrl }
+        : {}),
+    };
+  }
+
+  async resetPassword(dto: ResetPasswordDto): Promise<{ message: string }> {
+    const cfg = getAuthConfig(this.configService);
+    if (dto.newPassword.length < cfg.passwordMinLength) {
+      throw new BadRequestException(
+        `Password must be at least ${cfg.passwordMinLength} characters`,
+      );
+    }
+
+    const now = new Date();
+    const user = await this.userModel
+      .findOne({
+        resetPasswordToken: dto.token,
+        resetPasswordExpires: { $gt: now },
+      })
+      .select('+passwordHash +resetPasswordToken +resetPasswordExpires')
+      .exec();
+
+    if (!user) {
+      throw new BadRequestException('Invalid or expired password reset link');
+    }
+
+    user.passwordHash = await bcrypt.hash(
+      dto.newPassword,
+      cfg.bcryptSaltRounds,
+    );
+    user.resetPasswordToken = null;
+    user.resetPasswordExpires = null;
+    await user.save();
+
+    return {
+      message:
+        'Password has been reset successfully. You can now sign in with your new password.',
+    };
   }
 
   logout(): { loggedOut: true } {

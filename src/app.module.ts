@@ -9,7 +9,9 @@ import { AuthModule } from './auth/auth.module.js';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from './auth/guards/roles.guard.js';
 import { getDatabaseConfig } from './config/database.config.js';
+import { NotificationsModule } from './notifications/notifications.module.js';
 import { OverviewModule } from './overview/overview.module.js';
+import { SettingsModule } from './settings/settings.module.js';
 import { TeachersModule } from './teachers/teachers.module.js';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
@@ -32,7 +34,9 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
       serviceId: 'my-nest-app',
     }),
     AuthModule,
+    NotificationsModule,
     OverviewModule,
+    SettingsModule,
     TeachersModule,
   ],
   controllers: [AppController],
