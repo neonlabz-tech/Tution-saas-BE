@@ -7,8 +7,6 @@ export type AttendanceRecordDocument = HydratedDocument<AttendanceRecord>;
 @Schema({
   timestamps: true,
   collection: 'attendance',
-  autoCreate: false,
-  autoIndex: false,
 })
 export class AttendanceRecord {
   @Prop({ required: true, unique: true, index: true, trim: true })
