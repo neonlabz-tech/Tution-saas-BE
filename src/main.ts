@@ -19,7 +19,9 @@ async function bootstrap() {
   });
   const allowedOrigins = (
     process.env.CORS_ORIGINS ??
-    'http://localhost:3000,http://localhost:3001,http://localhost:5173'
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'https://tuition-saas.vercel.app'       
   )
     .split(',')
     .map((origin) => origin.trim())
