@@ -7,7 +7,10 @@ import {
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule, ObserveInstrument } from './app.module.js';
-import { AllExceptionsFilter, HttpExceptionFilter } from './common/filters/index.js';
+import {
+  AllExceptionsFilter,
+  HttpExceptionFilter,
+} from './common/filters/index.js';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
