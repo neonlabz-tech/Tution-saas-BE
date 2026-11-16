@@ -15,6 +15,7 @@ import { getDatabaseConfig } from './config/database.config.js';
 import { validateEnvironment } from './config/env.validation.js';
 import { MailModule } from './mail/mail.module.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
+import { OnlineClassesModule } from './online-classes/online-classes.module.js';
 import { OverviewModule } from './overview/overview.module.js';
 import { SettingsModule } from './settings/settings.module.js';
 import { StudentsModule } from './students/students.module.js';
@@ -60,6 +61,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
     AuthModule,
     NotificationsModule,
+    OnlineClassesModule,
     OverviewModule,
     SettingsModule,
     TeachersModule,
