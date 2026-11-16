@@ -4,6 +4,7 @@ import {
   FileMailTransport,
   LogMailTransport,
   MailModule as NestMailModule,
+  ResendTransport,
   SmtpTransport,
   type MailTransport,
 } from '@nestjs/mail';
@@ -11,12 +12,27 @@ import { MailService } from './mail.service.js';
 
 function createMailTransport(configService: ConfigService): MailTransport {
   const logger = new Logger('MailModule');
-  const transportMode = configService.get<string>('MAIL_TRANSPORT');
+  const transportMode = configService.get<string>('MAIL_TRANSPORT')?.toLowerCase();
   const host = configService.get<string>('MAIL_HOST')?.trim();
+  const resendApiKey = (
+    configService.get<string>('RESEND_API_KEY') ||
+    configService.get<string>('MAIL_PASS')
+  )?.trim();
 
   if (transportMode === 'file') {
     const directory = configService.get<string>('MAIL_DIRECTORY', 'var/mail');
     return new FileMailTransport({ directory });
+  }
+
+  if (transportMode === 'resend' || (!host && resendApiKey)) {
+    if (resendApiKey) {
+      logger.log('Using ResendTransport with onboarding@resend.dev');
+      return new ResendTransport({ apiKey: resendApiKey });
+    }
+    logger.warn(
+      'Resend transport requested but RESEND_API_KEY is not configured — using LogMailTransport.',
+    );
+    return new LogMailTransport();
   }
 
   if (transportMode === 'log' || (!host && transportMode !== 'smtp')) {
@@ -49,16 +65,14 @@ function createMailTransport(configService: ConfigService): MailTransport {
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => {
-        const instituteName = configService.get<string>(
-          'INSTITUTE_NAME',
-          'Bright Future Institute',
-        );
+        const appName = configService.get<string>('APP_NAME', 'EduFlow');
+        const from =
+          configService.get<string>('EMAIL_FROM') ||
+          configService.get<string>('MAIL_FROM') ||
+          `${appName} <onboarding@resend.dev>`;
         return {
           transport: createMailTransport(configService),
-          from: configService.get<string>(
-            'MAIL_FROM',
-            `${instituteName} <no-reply@eduflow.lk>`,
-          ),
+          from,
         };
       },
     }),

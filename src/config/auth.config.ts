@@ -11,6 +11,9 @@ export interface AuthRuntimeConfig {
   defaultAdminName: string;
   defaultAdminEmail: string;
   defaultAdminPassword: string;
+  resendApiKey: string;
+  emailFrom: string;
+  frontendUrl: string;
 }
 
 export function getAuthConfig(
@@ -45,6 +48,13 @@ export function getAuthConfig(
       configService.get<string>('ADMIN_DEFAULT_EMAIL') || '',
     defaultAdminPassword:
       configService.get<string>('ADMIN_DEFAULT_PASSWORD') || '',
+    resendApiKey: configService.get<string>('RESEND_API_KEY') || '',
+    emailFrom:
+      configService.get<string>('EMAIL_FROM') ||
+      configService.get<string>('MAIL_FROM') ||
+      'EduFlow <onboarding@resend.dev>',
+    frontendUrl:
+      (configService.get<string>('FRONTEND_URL') || 'http://localhost:5173').replace(/\/+$/, ''),
   };
 }
 

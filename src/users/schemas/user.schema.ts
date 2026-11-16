@@ -31,6 +31,12 @@ export class User {
 
   @Prop({ type: Date, default: null })
   lastLoginAt: Date | null;
+
+  @Prop({ type: String, default: null, index: true, select: false })
+  resetPasswordToken?: string | null;
+
+  @Prop({ type: Date, default: null, select: false })
+  resetPasswordExpires?: Date | null;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

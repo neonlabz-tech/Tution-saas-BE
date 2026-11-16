@@ -16,6 +16,8 @@ describe('AuthController', () => {
       getProfile: vi.fn(),
       logout: vi.fn(),
       changePassword: vi.fn(),
+      forgotPassword: vi.fn(),
+      resetPassword: vi.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -34,21 +36,28 @@ describe('AuthController', () => {
     expect(service.getLoginConfig).toHaveBeenCalled();
   });
 
-  it('delegates login and register', async () => {
-    const authRes = { accessToken: 'tok' };
+  it('delegates login and register and sets auth cookie', async () => {
+    const authRes = { accessToken: 'tok', expiresIn: '7d' };
+    const res = { cookie: vi.fn(), clearCookie: vi.fn() } as unknown as Parameters<
+      AuthController['login']
+    >[1];
     service.login.mockResolvedValue(authRes);
     service.register.mockResolvedValue(authRes);
 
     expect(
-      await controller.login({ email: 'a@b.com', password: 'secret12' }),
+      await controller.login({ email: 'a@b.com', password: 'secret12' }, res),
     ).toBe(authRes);
     expect(
-      await controller.register({
-        fullName: 'Amara',
-        email: 'a@b.com',
-        password: 'secret12',
-      }),
+      await controller.register(
+        {
+          fullName: 'Amara',
+          email: 'a@b.com',
+          password: 'secret12',
+        },
+        res,
+      ),
     ).toBe(authRes);
+    expect(res.cookie).toHaveBeenCalledTimes(2);
   });
 
   it('delegates getMe, logout, and changePassword', async () => {
@@ -58,17 +67,44 @@ describe('AuthController', () => {
       fullName: 'Amara Perera',
       role: Role.ADMIN,
     };
+    const res = { cookie: vi.fn(), clearCookie: vi.fn() } as unknown as Parameters<
+      AuthController['logout']
+    >[0];
     service.getProfile.mockResolvedValue({ id: 'USR-001' });
     service.logout.mockReturnValue({ loggedOut: true });
     service.changePassword.mockResolvedValue({ updated: true });
 
     expect(await controller.getMe(user)).toEqual({ id: 'USR-001' });
-    expect(controller.logout()).toEqual({ loggedOut: true });
+    expect(controller.logout(res)).toEqual({ loggedOut: true });
+    expect(res.clearCookie).toHaveBeenCalledTimes(1);
     expect(
       await controller.changePassword(user, {
         currentPassword: 'old',
         newPassword: 'newpassword1',
       }),
     ).toEqual({ updated: true });
+  });
+
+  it('delegates forgotPassword and resetPassword', async () => {
+    service.forgotPassword.mockResolvedValue({ message: 'sent' });
+    service.resetPassword.mockResolvedValue({ message: 'reset' });
+
+    expect(
+      await controller.forgotPassword({ email: 'admin@gmail.com' }),
+    ).toEqual({ message: 'sent' });
+    expect(service.forgotPassword).toHaveBeenCalledWith({
+      email: 'admin@gmail.com',
+    });
+
+    expect(
+      await controller.resetPassword({
+        token: 'test-token',
+        newPassword: 'newPassword123',
+      }),
+    ).toEqual({ message: 'reset' });
+    expect(service.resetPassword).toHaveBeenCalledWith({
+      token: 'test-token',
+      newPassword: 'newPassword123',
+    });
   });
 });

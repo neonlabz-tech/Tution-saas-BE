@@ -14,6 +14,8 @@ export interface EnvironmentVariables {
   MAIL_USER?: string;
   MAIL_PASS?: string;
   MAIL_FROM?: string;
+  EMAIL_FROM?: string;
+  RESEND_API_KEY?: string;
   MAIL_DIRECTORY?: string;
   CORS_ORIGINS?: string;
   OBSERVE_APP_KEY?: string;
