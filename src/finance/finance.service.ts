@@ -1,17 +1,33 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import type { Model } from 'mongoose';
+import { type Model, Types } from 'mongoose';
 import { TxType } from '../enums/status.enum.js';
 import {
   CourseModule,
   type CourseModuleDocument,
 } from '../modules/schemas/module.schema.js';
-import { Student, type StudentDocument } from '../students/schemas/student.schema.js';
+import { Counter, type CounterDocument } from '../students/schemas/counter.schema.js';
+import {
+  Student,
+  type StudentDocument,
+  type StudentStatus,
+} from '../students/schemas/student.schema.js';
+import {
+  type CreateTransactionDto,
+  isValidCategoryForType,
+} from './dto/create-transaction.dto.js';
 import type {
   FinanceChartsQueryDto,
   FinanceKpisQueryDto,
   FinanceTransactionsQueryDto,
+  StudentPaymentsQueryDto,
 } from './dto/finance-query.dto.js';
+import type { RecordStudentPaymentDto } from './dto/record-student-payment.dto.js';
+import type { UpdateTransactionDto } from './dto/update-transaction.dto.js';
 import type { FinancePeriod } from './finance.constants.js';
 import { Transaction, type TransactionDocument } from './schemas/transaction.schema.js';
 
@@ -77,6 +93,50 @@ export interface FinanceChartsResponse {
   expenseByCategory: FinanceCategoryBreakdownItem[];
 }
 
+export type StudentPaymentStatus = 'paid' | 'partial' | 'unpaid';
+
+export interface StudentPaymentSummaryItem {
+  id: string;
+  fullName: string;
+  email: string;
+  batch: string;
+  status: StudentStatus;
+  moduleIds: string[];
+  feeTotal: number;
+  paidTotal: number;
+  outstanding: number;
+  paymentStatus: StudentPaymentStatus;
+  lastPaymentDate: string | null;
+  lastPaymentAmount: number | null;
+}
+
+export interface StudentPaymentsResponse {
+  items: StudentPaymentSummaryItem[];
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+  summary: {
+    totalStudents: number;
+    debtorCount: number;
+    totalOutstanding: number;
+  };
+}
+
+export interface RecordStudentPaymentResponse {
+  transaction: FinanceTransactionItem;
+  studentSummary: {
+    id: string;
+    fullName: string;
+    feeTotal: number;
+    paidTotal: number;
+    outstanding: number;
+    paymentStatus: StudentPaymentStatus;
+  };
+}
+
 function pad2(n: number): string {
   return String(n).padStart(2, '0');
 }
@@ -125,6 +185,9 @@ export class FinanceService {
 
     @InjectModel(CourseModule.name)
     private readonly moduleModel: Model<CourseModuleDocument>,
+
+    @InjectModel(Counter.name)
+    private readonly counterModel: Model<CounterDocument>,
   ) {}
 
   async getTransactions(
@@ -161,16 +224,7 @@ export class FinanceService {
       this.summarizeTotals(matchingForKpis);
 
     return {
-      items: pagedDocs.map((tx) => ({
-        id: tx.id,
-        type: tx.type,
-        category: tx.category,
-        amount: tx.amount,
-        date: tx.date,
-        description: tx.description ?? '',
-        studentId: tx.studentId,
-        method: tx.method,
-      })),
+      items: pagedDocs.map((tx) => this.toTransactionItem(tx)),
       pagination: {
         total: totalCount,
         page,
@@ -470,5 +524,377 @@ export class FinanceService {
     return Array.from(totals.entries())
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value);
+  }
+
+  async createTransaction(
+    dto: CreateTransactionDto,
+    now = new Date(),
+  ): Promise<FinanceTransactionItem> {
+    let resolvedStudentId: string | undefined;
+    if (dto.studentId) {
+      const student = await this.findStudentByIdOrObjectId(dto.studentId);
+      resolvedStudentId = student.id;
+    }
+
+    const date = dto.date ?? this.todayIso(now);
+    const id = await this.generateNextTransactionId(now.getUTCFullYear());
+
+    const created = await this.transactionModel.create({
+      id,
+      type: dto.type,
+      category: dto.category,
+      amount: dto.amount,
+      date,
+      description: dto.description ?? '',
+      studentId: resolvedStudentId,
+      method: dto.method,
+    });
+
+    return this.toTransactionItem(created);
+  }
+
+  async updateTransaction(
+    id: string,
+    dto: UpdateTransactionDto,
+  ): Promise<FinanceTransactionItem> {
+    const existing = await this.transactionModel
+      .findOne(this.buildIdFilter(id))
+      .lean()
+      .exec();
+
+    if (!existing) {
+      throw new NotFoundException(`Transaction "${id}" not found`);
+    }
+
+    const effectiveType = dto.type ?? existing.type;
+    const effectiveCategory = dto.category ?? existing.category;
+    if (!isValidCategoryForType(effectiveType, effectiveCategory)) {
+      throw new BadRequestException(
+        `Category "${effectiveCategory}" is not valid for type "${effectiveType}"`,
+      );
+    }
+
+    const setFields: Record<string, unknown> = {};
+    const unsetFields: Record<string, 1> = {};
+
+    if (dto.type !== undefined) setFields.type = dto.type;
+    if (dto.category !== undefined) setFields.category = dto.category;
+    if (dto.amount !== undefined) setFields.amount = dto.amount;
+    if (dto.date !== undefined) setFields.date = dto.date;
+    if (dto.description !== undefined) setFields.description = dto.description;
+    if (dto.method !== undefined) setFields.method = dto.method;
+
+    if (dto.studentId === null) {
+      unsetFields.studentId = 1;
+    } else if (dto.studentId !== undefined) {
+      const student = await this.findStudentByIdOrObjectId(dto.studentId);
+      setFields.studentId = student.id;
+    }
+
+    if (
+      Object.keys(setFields).length === 0 &&
+      Object.keys(unsetFields).length === 0
+    ) {
+      return this.toTransactionItem(existing);
+    }
+
+    const updateQuery: Record<string, unknown> = {};
+    if (Object.keys(setFields).length > 0) updateQuery.$set = setFields;
+    if (Object.keys(unsetFields).length > 0) updateQuery.$unset = unsetFields;
+
+    const updated = await this.transactionModel
+      .findOneAndUpdate({ _id: existing._id }, updateQuery, {
+        returnDocument: 'after',
+      })
+      .lean()
+      .exec();
+
+    if (!updated) {
+      throw new NotFoundException(`Transaction "${id}" not found`);
+    }
+
+    return this.toTransactionItem(updated);
+  }
+
+  async deleteTransaction(id: string): Promise<{ deleted: true; id: string }> {
+    const existing = await this.transactionModel
+      .findOne(this.buildIdFilter(id))
+      .lean()
+      .exec();
+
+    if (!existing) {
+      throw new NotFoundException(`Transaction "${id}" not found`);
+    }
+
+    await this.transactionModel.deleteOne({ _id: existing._id }).exec();
+
+    return {
+      deleted: true,
+      id: existing.id,
+    };
+  }
+
+  async getStudentPayments(
+    query: StudentPaymentsQueryDto,
+  ): Promise<StudentPaymentsResponse> {
+    const studentFilter: Record<string, unknown> = {};
+
+    if (query.status) {
+      studentFilter.status = query.status;
+    } else if (!query.includeGraduated) {
+      studentFilter.status = { $ne: 'graduated' };
+    }
+
+    if (query.batch) {
+      studentFilter.batch = query.batch;
+    }
+
+    if (query.q) {
+      const escaped = query.q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(escaped, 'i');
+      studentFilter.$or = [{ fullName: regex }, { id: regex }, { email: regex }];
+    }
+
+    const [students, modules, incomeTransactions] = await Promise.all([
+      this.studentModel
+        .find(studentFilter)
+        .select('id fullName email batch status moduleIds')
+        .lean()
+        .exec(),
+      this.moduleModel.find().select('id fee').lean().exec(),
+      this.transactionModel
+        .find({
+          type: TxType.INCOME,
+          studentId: { $exists: true, $ne: null },
+        })
+        .select('studentId category amount date')
+        .sort({ date: -1, createdAt: -1 })
+        .lean()
+        .exec(),
+    ]);
+
+    const moduleFeeById = new Map<string, number>();
+    for (const mod of modules) {
+      moduleFeeById.set(mod.id, mod.fee);
+    }
+
+    const tuitionPaidByStudentId = new Map<string, number>();
+    const lastPaymentByStudentId = new Map<
+      string,
+      { date: string; amount: number }
+    >();
+
+    for (const tx of incomeTransactions) {
+      if (!tx.studentId) continue;
+      if (tx.category === 'Tuition fees') {
+        tuitionPaidByStudentId.set(
+          tx.studentId,
+          (tuitionPaidByStudentId.get(tx.studentId) ?? 0) + tx.amount,
+        );
+      }
+      if (!lastPaymentByStudentId.has(tx.studentId)) {
+        lastPaymentByStudentId.set(tx.studentId, {
+          date: tx.date,
+          amount: tx.amount,
+        });
+      }
+    }
+
+    const computedAll: StudentPaymentSummaryItem[] = students.map((student) => {
+      const feeTotal = (student.moduleIds ?? []).reduce(
+        (sum, modId) => sum + (moduleFeeById.get(modId) ?? 0),
+        0,
+      );
+      const paidTotal = tuitionPaidByStudentId.get(student.id) ?? 0;
+      const outstanding = Math.max(0, feeTotal - paidTotal);
+      const lastPayment = lastPaymentByStudentId.get(student.id) ?? null;
+
+      return {
+        id: student.id,
+        fullName: student.fullName,
+        email: student.email,
+        batch: student.batch,
+        status: student.status,
+        moduleIds: student.moduleIds ?? [],
+        feeTotal,
+        paidTotal,
+        outstanding,
+        paymentStatus: this.derivePaymentStatus(feeTotal, paidTotal, outstanding),
+        lastPaymentDate: lastPayment?.date ?? null,
+        lastPaymentAmount: lastPayment?.amount ?? null,
+      };
+    });
+
+    const debtorCount = computedAll.filter((s) => s.outstanding > 0).length;
+    const totalOutstanding = computedAll.reduce(
+      (sum, s) => sum + s.outstanding,
+      0,
+    );
+
+    const filtered = (
+      query.debtorsOnly
+        ? computedAll.filter((s) => s.outstanding > 0)
+        : computedAll
+    ).sort(
+      (a, b) =>
+        b.outstanding - a.outstanding || a.fullName.localeCompare(b.fullName),
+    );
+
+    const { page, limit } = query;
+    const total = filtered.length;
+    const items = filtered.slice((page - 1) * limit, page * limit);
+
+    return {
+      items,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+      },
+      summary: {
+        totalStudents: computedAll.length,
+        debtorCount,
+        totalOutstanding,
+      },
+    };
+  }
+
+  async recordStudentPayment(
+    dto: RecordStudentPaymentDto,
+    now = new Date(),
+  ): Promise<RecordStudentPaymentResponse> {
+    const student = await this.findStudentByIdOrObjectId(dto.studentId);
+    const date = dto.date ?? this.todayIso(now);
+    const id = await this.generateNextTransactionId(now.getUTCFullYear());
+
+    const created = await this.transactionModel.create({
+      id,
+      type: TxType.INCOME,
+      category: dto.category,
+      amount: dto.amount,
+      date,
+      description: dto.description ?? `${dto.category} - ${student.id}`,
+      studentId: student.id,
+      method: dto.method,
+    });
+
+    const [modules, tuitionPayments] = await Promise.all([
+      student.moduleIds?.length
+        ? this.moduleModel
+            .find({ id: { $in: student.moduleIds } })
+            .select('fee')
+            .lean()
+            .exec()
+        : Promise.resolve([]),
+      this.transactionModel
+        .find({
+          type: TxType.INCOME,
+          category: 'Tuition fees',
+          studentId: student.id,
+        })
+        .select('amount')
+        .lean()
+        .exec(),
+    ]);
+
+    const feeTotal = modules.reduce((sum, m) => sum + m.fee, 0);
+    const paidTotal = tuitionPayments.reduce((sum, tx) => sum + tx.amount, 0);
+    const outstanding = Math.max(0, feeTotal - paidTotal);
+
+    return {
+      transaction: this.toTransactionItem(created),
+      studentSummary: {
+        id: student.id,
+        fullName: student.fullName,
+        feeTotal,
+        paidTotal,
+        outstanding,
+        paymentStatus: this.derivePaymentStatus(feeTotal, paidTotal, outstanding),
+      },
+    };
+  }
+
+  private derivePaymentStatus(
+    feeTotal: number,
+    paidTotal: number,
+    outstanding: number,
+  ): StudentPaymentStatus {
+    if (outstanding === 0 && (feeTotal > 0 || paidTotal > 0)) {
+      return 'paid';
+    }
+    if (paidTotal > 0 && outstanding > 0) {
+      return 'partial';
+    }
+    return 'unpaid';
+  }
+
+  private toTransactionItem(
+    tx: Pick<
+      Transaction,
+      | 'id'
+      | 'type'
+      | 'category'
+      | 'amount'
+      | 'date'
+      | 'description'
+      | 'studentId'
+      | 'method'
+    >,
+  ): FinanceTransactionItem {
+    return {
+      id: tx.id,
+      type: tx.type,
+      category: tx.category,
+      amount: tx.amount,
+      date: tx.date,
+      description: tx.description ?? '',
+      studentId: tx.studentId,
+      method: tx.method,
+    };
+  }
+
+  private todayIso(now: Date): string {
+    return toUtcIsoDate(
+      new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())),
+    );
+  }
+
+  private buildIdFilter(idOrObjectId: string): Record<string, unknown> {
+    const trimmed = idOrObjectId.trim();
+    if (/^[0-9a-fA-F]{24}$/.test(trimmed) && Types.ObjectId.isValid(trimmed)) {
+      return { $or: [{ id: trimmed }, { _id: new Types.ObjectId(trimmed) }] };
+    }
+    return { id: trimmed };
+  }
+
+  private async findStudentByIdOrObjectId(
+    idOrObjectId: string,
+  ): Promise<Pick<Student, 'id' | 'fullName' | 'moduleIds'>> {
+    const student = await this.studentModel
+      .findOne(this.buildIdFilter(idOrObjectId))
+      .select('id fullName moduleIds')
+      .lean()
+      .exec();
+
+    if (!student) {
+      throw new NotFoundException(`Student "${idOrObjectId}" not found`);
+    }
+
+    return student;
+  }
+
+  private async generateNextTransactionId(year: number): Promise<string> {
+    const counter = await this.counterModel
+      .findOneAndUpdate(
+        { _id: `transaction:${year}` },
+        { $inc: { seq: 1 } },
+        { upsert: true, returnDocument: 'after' },
+      )
+      .lean()
+      .exec();
+
+    const seq = counter?.seq ?? 1;
+    return `TX-${year}-${String(seq).padStart(3, '0')}`;
   }
 }

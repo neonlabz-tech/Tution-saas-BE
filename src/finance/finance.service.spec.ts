@@ -1,9 +1,10 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { getModelToken } from '@nestjs/mongoose';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TxType } from '../enums/status.enum.js';
 import { CourseModule } from '../modules/schemas/module.schema.js';
+import { Counter } from '../students/schemas/counter.schema.js';
 import { Student } from '../students/schemas/student.schema.js';
 import {
   EXPENSE_CATEGORIES,
@@ -29,19 +30,28 @@ describe('FinanceService', () => {
   let transactionModel: Record<string, ReturnType<typeof vi.fn>>;
   let studentModel: Record<string, ReturnType<typeof vi.fn>>;
   let moduleModel: Record<string, ReturnType<typeof vi.fn>>;
+  let counterModel: Record<string, ReturnType<typeof vi.fn>>;
 
   const fixedNow = new Date('2026-11-13T10:00:00.000Z');
 
   beforeEach(async () => {
     transactionModel = {
       find: vi.fn(),
+      findOne: vi.fn(),
+      create: vi.fn(),
+      findOneAndUpdate: vi.fn(),
+      deleteOne: vi.fn(),
       countDocuments: vi.fn(),
     };
     studentModel = {
       find: vi.fn(),
+      findOne: vi.fn(),
     };
     moduleModel = {
       find: vi.fn(),
+    };
+    counterModel = {
+      findOneAndUpdate: vi.fn().mockReturnValue(createChain({ seq: 1 })),
     };
 
     const moduleRef: TestingModule = await Test.createTestingModule({
@@ -50,6 +60,7 @@ describe('FinanceService', () => {
         { provide: getModelToken(Transaction.name), useValue: transactionModel },
         { provide: getModelToken(Student.name), useValue: studentModel },
         { provide: getModelToken(CourseModule.name), useValue: moduleModel },
+        { provide: getModelToken(Counter.name), useValue: counterModel },
       ],
     }).compile();
 
@@ -305,6 +316,245 @@ describe('FinanceService', () => {
         net: 11000,
       });
       expect(res.series[11].key).toBe('2026-11');
+    });
+  });
+
+  describe('createTransaction', () => {
+    it('creates an expense transaction with sequential TX-YYYY-NNN id', async () => {
+      counterModel.findOneAndUpdate.mockReturnValue(createChain({ seq: 7 }));
+      transactionModel.create.mockResolvedValue({
+        id: 'TX-2026-007',
+        type: TxType.EXPENSE,
+        category: 'Rent',
+        amount: 45000,
+        date: '2026-11-13',
+        description: 'Monthly rent',
+        method: 'Bank Transfer',
+      });
+
+      const res = await service.createTransaction(
+        {
+          type: TxType.EXPENSE,
+          category: 'Rent',
+          amount: 45000,
+          description: 'Monthly rent',
+          method: 'Bank Transfer',
+        },
+        fixedNow,
+      );
+
+      expect(transactionModel.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'TX-2026-007',
+          type: TxType.EXPENSE,
+          category: 'Rent',
+          amount: 45000,
+          date: '2026-11-13',
+        }),
+      );
+      expect(res.id).toBe('TX-2026-007');
+    });
+
+    it('throws NotFoundException when studentId does not exist', async () => {
+      studentModel.findOne.mockReturnValue(createChain(null));
+
+      await expect(
+        service.createTransaction(
+          {
+            type: TxType.INCOME,
+            category: 'Tuition fees',
+            amount: 5000,
+            description: 'Fee',
+            studentId: 'STU-9999-999',
+          },
+          fixedNow,
+        ),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('updateTransaction', () => {
+    it('updates valid fields on an existing transaction', async () => {
+      const existing = {
+        _id: '507f1f77bcf86cd799439011',
+        id: 'TX-2026-001',
+        type: TxType.EXPENSE,
+        category: 'Rent',
+        amount: 45000,
+        date: '2026-11-10',
+        description: 'Rent',
+      };
+      transactionModel.findOne.mockReturnValue(createChain(existing));
+      transactionModel.findOneAndUpdate.mockReturnValue(
+        createChain({ ...existing, amount: 50000 }),
+      );
+
+      const res = await service.updateTransaction('TX-2026-001', {
+        amount: 50000,
+      });
+
+      expect(res.amount).toBe(50000);
+    });
+
+    it('rejects mismatched effective type and category', async () => {
+      transactionModel.findOne.mockReturnValue(
+        createChain({
+          _id: '507f1f77bcf86cd799439011',
+          id: 'TX-2026-001',
+          type: TxType.EXPENSE,
+          category: 'Rent',
+          amount: 45000,
+          date: '2026-11-10',
+          description: 'Rent',
+        }),
+      );
+
+      await expect(
+        service.updateTransaction('TX-2026-001', {
+          type: TxType.INCOME,
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('deleteTransaction', () => {
+    it('deletes existing transaction and returns confirmation', async () => {
+      const existing = {
+        _id: '507f1f77bcf86cd799439011',
+        id: 'TX-2026-001',
+      };
+      transactionModel.findOne.mockReturnValue(createChain(existing));
+      transactionModel.deleteOne.mockReturnValue({
+        exec: vi.fn().mockResolvedValue({ deletedCount: 1 }),
+      });
+
+      const res = await service.deleteTransaction('TX-2026-001');
+
+      expect(transactionModel.deleteOne).toHaveBeenCalledWith({
+        _id: '507f1f77bcf86cd799439011',
+      });
+      expect(res).toEqual({ deleted: true, id: 'TX-2026-001' });
+    });
+
+    it('throws NotFoundException when transaction does not exist', async () => {
+      transactionModel.findOne.mockReturnValue(createChain(null));
+      await expect(service.deleteTransaction('TX-9999-999')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+  });
+
+  describe('getStudentPayments', () => {
+    it('computes per-student balances and filters debtorsOnly', async () => {
+      studentModel.find.mockReturnValue(
+        createChain([
+          {
+            id: 'STU-2026-001',
+            fullName: 'Nimal Perera',
+            email: 'nimal@mail.lk',
+            batch: '2025-A Morning',
+            status: 'active',
+            moduleIds: ['mod_mth'],
+          },
+          {
+            id: 'STU-2026-002',
+            fullName: 'Kamal Silva',
+            email: 'kamal@mail.lk',
+            batch: '2025-A Morning',
+            status: 'active',
+            moduleIds: ['mod_mth'],
+          },
+        ]),
+      );
+      moduleModel.find.mockReturnValue(
+        createChain([{ id: 'mod_mth', fee: 10000 }]),
+      );
+      transactionModel.find.mockReturnValue(
+        createChain([
+          {
+            studentId: 'STU-2026-001',
+            category: 'Tuition fees',
+            amount: 10000,
+            date: '2026-11-10',
+          },
+          {
+            studentId: 'STU-2026-002',
+            category: 'Tuition fees',
+            amount: 4000,
+            date: '2026-11-12',
+          },
+        ]),
+      );
+
+      const res = await service.getStudentPayments({
+        debtorsOnly: true,
+        includeGraduated: false,
+        page: 1,
+        limit: 20,
+      });
+
+      expect(res.summary).toEqual({
+        totalStudents: 2,
+        debtorCount: 1,
+        totalOutstanding: 6000,
+      });
+      expect(res.items).toHaveLength(1);
+      expect(res.items[0]).toMatchObject({
+        id: 'STU-2026-002',
+        feeTotal: 10000,
+        paidTotal: 4000,
+        outstanding: 6000,
+        paymentStatus: 'partial',
+        lastPaymentDate: '2026-11-12',
+        lastPaymentAmount: 4000,
+      });
+    });
+  });
+
+  describe('recordStudentPayment', () => {
+    it('records income transaction and returns updated studentSummary', async () => {
+      studentModel.findOne.mockReturnValue(
+        createChain({
+          id: 'STU-2026-002',
+          fullName: 'Kamal Silva',
+          moduleIds: ['mod_mth'],
+        }),
+      );
+      counterModel.findOneAndUpdate.mockReturnValue(createChain({ seq: 12 }));
+      transactionModel.create.mockResolvedValue({
+        id: 'TX-2026-012',
+        type: TxType.INCOME,
+        category: 'Tuition fees',
+        amount: 6000,
+        date: '2026-11-13',
+        description: 'Tuition fees - STU-2026-002',
+        studentId: 'STU-2026-002',
+        method: 'Cash',
+      });
+      moduleModel.find.mockReturnValue(createChain([{ fee: 10000 }]));
+      transactionModel.find.mockReturnValue(
+        createChain([{ amount: 4000 }, { amount: 6000 }]),
+      );
+
+      const res = await service.recordStudentPayment(
+        {
+          studentId: 'STU-2026-002',
+          amount: 6000,
+          category: 'Tuition fees',
+          method: 'Cash',
+        },
+        fixedNow,
+      );
+
+      expect(res.transaction.id).toBe('TX-2026-012');
+      expect(res.studentSummary).toEqual({
+        id: 'STU-2026-002',
+        fullName: 'Kamal Silva',
+        feeTotal: 10000,
+        paidTotal: 10000,
+        outstanding: 0,
+        paymentStatus: 'paid',
+      });
     });
   });
 });

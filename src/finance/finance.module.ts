@@ -4,6 +4,7 @@ import {
   CourseModule,
   CourseModuleSchema,
 } from '../modules/schemas/module.schema.js';
+import { Counter, CounterSchema } from '../students/schemas/counter.schema.js';
 import { Student, StudentSchema } from '../students/schemas/student.schema.js';
 import { FinanceController } from './finance.controller.js';
 import { FinanceService } from './finance.service.js';
@@ -15,6 +16,7 @@ import { Transaction, TransactionSchema } from './schemas/transaction.schema.js'
       { name: Transaction.name, schema: TransactionSchema },
       { name: Student.name, schema: StudentSchema },
       { name: CourseModule.name, schema: CourseModuleSchema },
+      { name: Counter.name, schema: CounterSchema },
     ]),
   ],
   controllers: [FinanceController],

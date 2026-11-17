@@ -64,5 +64,8 @@ postman/
 EduFlow - Modules API/
 *.request.yaml
 postman_modules_collection.yaml
+postman_modules_collection.json
+postman_finance_collection.yaml
+postman_finance_collection.json
 modules-api-spec.yaml
 
