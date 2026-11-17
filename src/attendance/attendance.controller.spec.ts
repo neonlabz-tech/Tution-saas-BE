@@ -13,6 +13,11 @@ describe('AttendanceController', () => {
       verifyQr: vi.fn(),
       markQrAttendance: vi.fn(),
       markManualAttendance: vi.fn(),
+      upsertAttendance: vi.fn(),
+      getDailyRoster: vi.fn(),
+      getSummaries: vi.fn(),
+      bulkMarkUnmarked: vi.fn(),
+      getStudentHistory: vi.fn(),
       findAll: vi.fn(),
       findById: vi.fn(),
       getStats: vi.fn(),
@@ -85,6 +90,50 @@ describe('AttendanceController', () => {
     const res = await controller.getStats('2026-11-16', 'mod_1');
     expect(service.getStats).toHaveBeenCalledWith('2026-11-16', 'mod_1');
     expect(res).toEqual({ rate: 85 });
+  });
+
+  it('delegates upsertAttendancePost to service.upsertAttendance', async () => {
+    const dto = {
+      studentId: 'STU-001',
+      moduleId: 'mod_1',
+      date: '2026-11-16',
+      status: AttendanceStatus.PRESENT,
+    };
+    service.upsertAttendance.mockResolvedValue({ success: true });
+    const res = await controller.upsertAttendancePost(dto);
+    expect(service.upsertAttendance).toHaveBeenCalledWith(dto);
+    expect(res).toEqual({ success: true });
+  });
+
+  it('delegates getDailyRoster to service.getDailyRoster', async () => {
+    const query = { date: '2026-11-16', moduleId: 'mod_1' };
+    service.getDailyRoster.mockResolvedValue({ totalEntries: 1 });
+    const res = await controller.getDailyRoster(query);
+    expect(service.getDailyRoster).toHaveBeenCalledWith(query);
+    expect(res).toEqual({ totalEntries: 1 });
+  });
+
+  it('delegates getSummaries to service.getSummaries', async () => {
+    const query = { from: '2026-11-01', to: '2026-11-30' };
+    service.getSummaries.mockResolvedValue({ totalStudents: 1 });
+    const res = await controller.getSummaries(query);
+    expect(service.getSummaries).toHaveBeenCalledWith(query);
+    expect(res).toEqual({ totalStudents: 1 });
+  });
+
+  it('delegates bulkMarkUnmarkedPost to service.bulkMarkUnmarked', async () => {
+    const dto = { date: '2026-11-16', moduleId: 'mod_1' };
+    service.bulkMarkUnmarked.mockResolvedValue({ markedCount: 5 });
+    const res = await controller.bulkMarkUnmarkedPost(dto);
+    expect(service.bulkMarkUnmarked).toHaveBeenCalledWith(dto);
+    expect(res).toEqual({ markedCount: 5 });
+  });
+
+  it('delegates getStudentHistory to service.getStudentHistory', async () => {
+    service.getStudentHistory.mockResolvedValue({ overallRate: 95 });
+    const res = await controller.getStudentHistory('STU-001', {});
+    expect(service.getStudentHistory).toHaveBeenCalledWith('STU-001', {});
+    expect(res).toEqual({ overallRate: 95 });
   });
 
   it('delegates delete to service.delete', async () => {

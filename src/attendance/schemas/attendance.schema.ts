@@ -30,6 +30,9 @@ export class AttendanceRecord {
 
   @Prop({ type: String, enum: ['manual', 'qr'], default: 'manual' })
   method: 'manual' | 'qr';
+
+  @Prop({ type: String, required: false, default: '' })
+  remarks?: string;
 }
 
 export const AttendanceRecordSchema =

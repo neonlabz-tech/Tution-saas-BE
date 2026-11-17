@@ -256,6 +256,136 @@ describe('AttendanceService', () => {
     });
   });
 
+  describe('upsertAttendance', () => {
+    it('creates attendance record when none exists', async () => {
+      studentModel.findOne.mockReturnValue(mockQuery(mockStudent));
+      moduleModel.findOne.mockReturnValue(mockQuery(mockModule));
+      attendanceModel.findOne.mockReturnValue({
+        exec: vi.fn().mockResolvedValue(null),
+      });
+      attendanceModel.create.mockResolvedValue(mockAttendance);
+
+      const res = await service.upsertAttendance({
+        studentId: 'STU-2026-001',
+        moduleId: 'mod_mth_101',
+        date: '2026-11-16',
+        status: AttendanceStatus.PRESENT,
+        method: 'manual',
+      });
+
+      expect(res.success).toBe(true);
+      expect(res.isNew).toBe(true);
+    });
+
+    it('updates attendance record when existing record exists', async () => {
+      studentModel.findOne.mockReturnValue(mockQuery(mockStudent));
+      moduleModel.findOne.mockReturnValue(mockQuery(mockModule));
+      const existingDoc = {
+        ...mockAttendance,
+        status: AttendanceStatus.ABSENT,
+        save: vi.fn().mockResolvedValue({
+          ...mockAttendance,
+          status: AttendanceStatus.PRESENT,
+        }),
+      };
+      attendanceModel.findOne.mockReturnValue({
+        exec: vi.fn().mockResolvedValue(existingDoc),
+      });
+
+      const res = await service.upsertAttendance({
+        studentId: 'STU-2026-001',
+        moduleId: 'mod_mth_101',
+        date: '2026-11-16',
+        status: AttendanceStatus.PRESENT,
+        method: 'manual',
+      });
+
+      expect(res.success).toBe(true);
+      expect(res.isNew).toBe(false);
+      expect(existingDoc.save).toHaveBeenCalled();
+    });
+  });
+
+  describe('getDailyRoster', () => {
+    it('returns daily roster with student-module entries and unmarked counts', async () => {
+      studentModel.find.mockReturnValue(mockQuery([mockStudent]));
+      moduleModel.find.mockReturnValue(mockQuery([mockModule]));
+      attendanceModel.find.mockReturnValue(mockQuery([]));
+
+      const res = await service.getDailyRoster({
+        date: '2026-11-16',
+        moduleId: 'mod_mth_101',
+      });
+
+      expect(res.totalEntries).toBe(1);
+      expect(res.unmarkedCount).toBe(1);
+      expect(res.markedCount).toBe(0);
+      expect(res.rows[0].record).toBeNull();
+    });
+  });
+
+  describe('bulkMarkUnmarked', () => {
+    it('marks all unmarked active students for target module as present', async () => {
+      studentModel.find.mockReturnValue(mockQuery([mockStudent]));
+      attendanceModel.find.mockReturnValue(mockQuery([]));
+      attendanceModel.insertMany = vi.fn().mockResolvedValue([mockAttendance]);
+
+      const res = await service.bulkMarkUnmarked({
+        date: '2026-11-16',
+        moduleId: 'mod_mth_101',
+      });
+
+      expect(res.success).toBe(true);
+      expect(res.markedCount).toBe(1);
+      expect(attendanceModel.insertMany).toHaveBeenCalled();
+    });
+  });
+
+  describe('getSummaries', () => {
+    it('calculates aggregated student summaries and rate over range', async () => {
+      studentModel.find.mockReturnValue(mockQuery([mockStudent]));
+      attendanceModel.find.mockReturnValue(
+        mockQuery([
+          { ...mockAttendance, status: AttendanceStatus.PRESENT },
+          { ...mockAttendance, status: AttendanceStatus.LATE },
+        ]),
+      );
+
+      const res = await service.getSummaries({
+        from: '2026-11-01',
+        to: '2026-11-30',
+        moduleId: 'mod_mth_101',
+      });
+
+      expect(res.totalStudents).toBe(1);
+      expect(res.summaries[0].present).toBe(1);
+      expect(res.summaries[0].late).toBe(1);
+      expect(res.summaries[0].rate).toBe(100);
+      expect(res.overallRate).toBe(100);
+    });
+  });
+
+  describe('getStudentHistory', () => {
+    it('returns student attendance history with populated modules', async () => {
+      studentModel.findOne.mockReturnValue(mockQuery(mockStudent));
+      attendanceModel.find.mockReturnValue({
+        sort: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        lean: vi.fn().mockReturnThis(),
+        exec: vi.fn().mockResolvedValue([mockAttendance]),
+      });
+      moduleModel.find.mockReturnValue(mockQuery([mockModule]));
+
+      const res = await service.getStudentHistory('STU-2026-001');
+
+      expect(res.student.id).toBe('STU-2026-001');
+      expect(res.counts.present).toBe(1);
+      expect(res.counts.total).toBe(1);
+      expect(res.overallRate).toBe(100);
+      expect(res.records[0].module?.name).toBe('Pure Mathematics');
+    });
+  });
+
   describe('delete', () => {
     it('deletes attendance record', async () => {
       attendanceModel.deleteOne.mockReturnValue({

@@ -15,9 +15,14 @@ import {
   Student,
   type StudentDocument,
 } from '../students/schemas/student.schema.js';
+import { BulkMarkUnmarkedDto } from './dto/bulk-mark-unmarked.dto.js';
+import { DailyRosterQueryDto } from './dto/daily-roster.dto.js';
 import { MarkManualAttendanceDto } from './dto/mark-manual-attendance.dto.js';
 import { MarkQrAttendanceDto } from './dto/mark-qr-attendance.dto.js';
+import { QueryAttendanceSummariesDto } from './dto/query-attendance-summaries.dto.js';
 import { QueryAttendanceDto } from './dto/query-attendance.dto.js';
+import { StudentHistoryQueryDto } from './dto/student-history-query.dto.js';
+import { UpsertAttendanceDto } from './dto/upsert-attendance.dto.js';
 import { VerifyQrDto } from './dto/verify-qr.dto.js';
 import {
   AttendanceRecord,
@@ -73,6 +78,114 @@ export interface AttendanceStatsResponse {
   records: AttendanceRecord[];
 }
 
+export interface DailyRosterEntry {
+  key: string;
+  student: {
+    id: string;
+    fullName: string;
+    email: string;
+    phone: string;
+    batch: string;
+    status: string;
+    avatar?: string;
+  };
+  module: {
+    id: string;
+    name: string;
+    code: string;
+  };
+  record: AttendanceRecord | null;
+}
+
+export interface DailyRosterResponse {
+  date: string;
+  moduleId: string;
+  batch: string;
+  totalEntries: number;
+  markedCount: number;
+  unmarkedCount: number;
+  counts: {
+    present: number;
+    absent: number;
+    late: number;
+    excused: number;
+  };
+  rows: DailyRosterEntry[];
+}
+
+export interface StudentAttendanceSummary {
+  student: {
+    id: string;
+    fullName: string;
+    email: string;
+    batch: string;
+    status: string;
+    phone?: string;
+  };
+  present: number;
+  absent: number;
+  late: number;
+  excused: number;
+  total: number;
+  rate: number;
+}
+
+export interface AttendanceSummariesResponse {
+  from: string;
+  to: string;
+  moduleId: string;
+  batch: string;
+  totalStudents: number;
+  overallCounts: {
+    present: number;
+    absent: number;
+    late: number;
+    excused: number;
+    total: number;
+  };
+  overallRate: number;
+  summaries: StudentAttendanceSummary[];
+}
+
+export interface StudentHistoryRecord extends AttendanceRecord {
+  module?: {
+    id: string;
+    name: string;
+    code: string;
+  };
+}
+
+export interface StudentHistoryResponse {
+  student: {
+    id: string;
+    fullName: string;
+    email: string;
+    phone: string;
+    batch: string;
+    status: string;
+    moduleIds: string[];
+  };
+  overallRate: number;
+  counts: {
+    present: number;
+    absent: number;
+    late: number;
+    excused: number;
+    total: number;
+  };
+  records: StudentHistoryRecord[];
+}
+
+export interface BulkMarkUnmarkedResponse {
+  success: boolean;
+  message: string;
+  date: string;
+  moduleId: string;
+  batch: string;
+  markedCount: number;
+  records: AttendanceRecord[];
+}
+
 @Injectable()
 export class AttendanceService {
   private readonly logger = new Logger(AttendanceService.name);
@@ -97,11 +210,22 @@ export class AttendanceService {
       .trim();
   }
 
+  private getDefaultMonthRange(): { from: string; to: string } {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const lastDay = new Date(y, now.getMonth() + 1, 0).getDate();
+    return {
+      from: `${y}-${m}-01`,
+      to: `${y}-${m}-${String(lastDay).padStart(2, '0')}`,
+    };
+  }
+
   async resolveStudent(code: string): Promise<Student> {
     const raw = code.trim();
     const clean = this.normalizeCode(code);
     if (!clean) {
-      throw new BadRequestException('QR code cannot be empty');
+      throw new BadRequestException('Student ID or QR code cannot be empty');
     }
 
     const student = await this.studentModel
@@ -116,7 +240,7 @@ export class AttendanceService {
       .exec();
 
     if (!student) {
-      throw new NotFoundException('No student matches the scanned QR code or ID');
+      throw new NotFoundException('No student matches the provided ID or QR code');
     }
 
     return student;
@@ -150,7 +274,7 @@ export class AttendanceService {
       if (!enrolledInModule) {
         return {
           valid: false,
-          message: `Student "${student.fullName}" (${student.id}) is not enrolled in module "${targetModule.name}" (${targetModule.code})`,
+          message: `Student "${student.fullName}" is not enrolled in module "${targetModule.name}" (${targetModule.code})`,
           student: {
             id: student.id,
             ref: student.ref,
@@ -162,31 +286,19 @@ export class AttendanceService {
             moduleIds: student.moduleIds,
           },
           enrolledInModule: false,
+          alreadyMarked: false,
         };
       }
 
-      const existing = await this.attendanceModel
-        .findOne({
-          studentId: student.id,
-          moduleId: dto.moduleId,
-          date: today,
-        })
-        .lean<AttendanceRecord>()
-        .exec();
-
-      if (existing) {
-        alreadyMarked = true;
-        existingAttendance = existing;
-      } else {
-        alreadyMarked = false;
-      }
+      const id = `att_${student.id}_${dto.moduleId}_${today}`;
+      const record = await this.attendanceModel.findOne({ id }).lean<AttendanceRecord>().exec();
+      alreadyMarked = !!record;
+      existingAttendance = record ?? undefined;
     }
 
     return {
       valid: true,
-      message: alreadyMarked
-        ? `Student "${student.fullName}" has already been marked ${existingAttendance?.status} today`
-        : `Student "${student.fullName}" verified successfully`,
+      message: 'Student verified successfully',
       student: {
         id: student.id,
         ref: student.ref,
@@ -208,7 +320,7 @@ export class AttendanceService {
 
     if (student.status !== 'active') {
       throw new BadRequestException(
-        `Cannot record attendance: Student "${student.fullName}" is ${student.status}.`,
+        `Student "${student.fullName}" is marked as ${student.status}. Only active students can be marked present.`,
       );
     }
 
@@ -271,16 +383,13 @@ export class AttendanceService {
     };
   }
 
-  async markManualAttendance(
-    dto: MarkManualAttendanceDto,
-  ): Promise<MarkAttendanceResponse> {
-    const student = await this.studentModel
-      .findOne({ id: dto.studentId })
-      .lean<Student>()
-      .exec();
+  async upsertAttendance(dto: UpsertAttendanceDto): Promise<MarkAttendanceResponse> {
+    const student = await this.resolveStudent(dto.studentId);
 
-    if (!student) {
-      throw new NotFoundException(`Student with ID "${dto.studentId}" not found`);
+    if (student.status !== 'active') {
+      throw new BadRequestException(
+        `Student "${student.fullName}" is marked as ${student.status}. Attendance can only be updated for active students.`,
+      );
     }
 
     const targetModule = await this.moduleModel
@@ -292,14 +401,27 @@ export class AttendanceService {
       throw new NotFoundException(`Module with ID "${dto.moduleId}" not found`);
     }
 
-    const id = `att_${student.id}_${dto.moduleId}_${dto.date}`;
+    if (!student.moduleIds.includes(dto.moduleId)) {
+      throw new BadRequestException(
+        `Student "${student.fullName}" is not enrolled in module "${targetModule.name}" (${targetModule.code})`,
+      );
+    }
+
+    const date = dto.date ?? new Date().toISOString().slice(0, 10);
+    const status = dto.status ?? AttendanceStatus.PRESENT;
+    const method = dto.method ?? 'manual';
+    const id = `att_${student.id}_${dto.moduleId}_${date}`;
+
     const existing = await this.attendanceModel.findOne({ id }).exec();
     let isNew = false;
     let saved: AttendanceRecord;
 
     if (existing) {
-      existing.status = dto.status;
-      existing.method = dto.method ?? 'manual';
+      existing.status = status;
+      existing.method = method;
+      if (dto.remarks !== undefined) {
+        existing.remarks = dto.remarks;
+      }
       const doc = await existing.save();
       saved = typeof doc.toObject === 'function' ? doc.toObject() : (doc as unknown as AttendanceRecord);
     } else {
@@ -308,16 +430,17 @@ export class AttendanceService {
         id,
         studentId: student.id,
         moduleId: dto.moduleId,
-        date: dto.date,
-        status: dto.status,
-        method: dto.method ?? 'manual',
+        date,
+        status,
+        method,
+        remarks: dto.remarks,
       });
       saved = typeof created.toObject === 'function' ? created.toObject() : (created as unknown as AttendanceRecord);
     }
 
     return {
       success: true,
-      message: `${student.fullName} marked ${dto.status} in ${targetModule.code}`,
+      message: `${student.fullName} marked ${status} in ${targetModule.code} (${isNew ? 'new record' : 'record updated'})`,
       isNew,
       record: saved,
       student: {
@@ -330,6 +453,335 @@ export class AttendanceService {
         name: targetModule.name,
         code: targetModule.code,
       },
+    };
+  }
+
+  async markManualAttendance(
+    dto: MarkManualAttendanceDto,
+  ): Promise<MarkAttendanceResponse> {
+    return this.upsertAttendance({
+      studentId: dto.studentId,
+      moduleId: dto.moduleId,
+      date: dto.date,
+      status: dto.status,
+      method: dto.method,
+    });
+  }
+
+  async getDailyRoster(query: DailyRosterQueryDto): Promise<DailyRosterResponse> {
+    const date = query.date ?? new Date().toISOString().slice(0, 10);
+
+    const studentFilter: Record<string, unknown> = { status: 'active' };
+    if (query.batch && query.batch !== 'all') {
+      studentFilter.batch = query.batch;
+    }
+    if (query.studentId && query.studentId !== 'all') {
+      studentFilter.id = query.studentId;
+    }
+    if (query.moduleId && query.moduleId !== 'all') {
+      studentFilter.moduleIds = query.moduleId;
+    }
+    if (query.q && query.q.trim()) {
+      const escaped = this.escapeRegex(query.q.trim());
+      studentFilter.$or = [
+        { fullName: new RegExp(escaped, 'i') },
+        { id: new RegExp(escaped, 'i') },
+      ];
+    }
+
+    const students = await this.studentModel.find(studentFilter).lean<Student[]>().exec();
+
+    const modules = await this.moduleModel.find({}).lean<CourseModule[]>().exec();
+    const moduleMap = new Map<string, CourseModule>(modules.map((m) => [m.id, m]));
+
+    const attFilter: Record<string, unknown> = { date };
+    if (query.moduleId && query.moduleId !== 'all') {
+      attFilter.moduleId = query.moduleId;
+    }
+    const records = await this.attendanceModel.find(attFilter).lean<AttendanceRecord[]>().exec();
+    const recordMap = new Map<string, AttendanceRecord>(records.map((r) => [r.id, r]));
+
+    const rows: DailyRosterEntry[] = [];
+    const counts = { present: 0, absent: 0, late: 0, excused: 0 };
+    let markedCount = 0;
+
+    for (const student of students) {
+      for (const mid of student.moduleIds) {
+        if (query.moduleId && query.moduleId !== 'all' && mid !== query.moduleId) {
+          continue;
+        }
+        const mod = moduleMap.get(mid) ?? {
+          id: mid,
+          name: mid,
+          code: mid,
+          teacherId: null,
+          fee: 0,
+        };
+        const key = `att_${student.id}_${mid}_${date}`;
+        const record = recordMap.get(key) ?? null;
+
+        if (record) {
+          markedCount++;
+          if (record.status in counts) {
+            counts[record.status as keyof typeof counts]++;
+          }
+        }
+
+        rows.push({
+          key,
+          student: {
+            id: student.id,
+            fullName: student.fullName,
+            email: student.email,
+            phone: student.phone,
+            batch: student.batch,
+            status: student.status,
+            avatar: (student as unknown as { avatar?: string }).avatar,
+          },
+          module: {
+            id: mod.id,
+            name: mod.name,
+            code: mod.code,
+          },
+          record,
+        });
+      }
+    }
+
+    return {
+      date,
+      moduleId: query.moduleId ?? 'all',
+      batch: query.batch ?? 'all',
+      totalEntries: rows.length,
+      markedCount,
+      unmarkedCount: rows.length - markedCount,
+      counts,
+      rows,
+    };
+  }
+
+  async bulkMarkUnmarked(dto: BulkMarkUnmarkedDto): Promise<BulkMarkUnmarkedResponse> {
+    const date = dto.date ?? new Date().toISOString().slice(0, 10);
+    const status = dto.status ?? AttendanceStatus.PRESENT;
+    const method = dto.method ?? 'manual';
+
+    const studentFilter: Record<string, unknown> = { status: 'active' };
+    if (dto.batch && dto.batch !== 'all') {
+      studentFilter.batch = dto.batch;
+    }
+    if (dto.moduleId && dto.moduleId !== 'all') {
+      studentFilter.moduleIds = dto.moduleId;
+    }
+
+    const students = await this.studentModel.find(studentFilter).lean<Student[]>().exec();
+
+    const attFilter: Record<string, unknown> = { date };
+    if (dto.moduleId && dto.moduleId !== 'all') {
+      attFilter.moduleId = dto.moduleId;
+    }
+
+    const existing = await this.attendanceModel.find(attFilter, { id: 1 }).lean<AttendanceRecord[]>().exec();
+    const existingIds = new Set(existing.map((e) => e.id));
+
+    const toCreate: Array<{
+      id: string;
+      studentId: string;
+      moduleId: string;
+      date: string;
+      status: AttendanceStatus;
+      method: 'manual' | 'qr';
+    }> = [];
+
+    for (const student of students) {
+      for (const mid of student.moduleIds) {
+        if (dto.moduleId && dto.moduleId !== 'all' && mid !== dto.moduleId) {
+          continue;
+        }
+        const key = `att_${student.id}_${mid}_${date}`;
+        if (!existingIds.has(key)) {
+          toCreate.push({
+            id: key,
+            studentId: student.id,
+            moduleId: mid,
+            date,
+            status,
+            method,
+          });
+        }
+      }
+    }
+
+    let createdDocs: AttendanceRecord[] = [];
+    if (toCreate.length > 0) {
+      const inserted = await this.attendanceModel.insertMany(toCreate, { ordered: false });
+      createdDocs = inserted.map((d) => (typeof d.toObject === 'function' ? d.toObject() : (d as unknown as AttendanceRecord)));
+    }
+
+    return {
+      success: true,
+      message: `${toCreate.length} unmarked student entries marked as ${status}`,
+      date,
+      moduleId: dto.moduleId ?? 'all',
+      batch: dto.batch ?? 'all',
+      markedCount: toCreate.length,
+      records: createdDocs,
+    };
+  }
+
+  async getSummaries(query: QueryAttendanceSummariesDto): Promise<AttendanceSummariesResponse> {
+    const defaultRange = this.getDefaultMonthRange();
+    const from = query.from ?? defaultRange.from;
+    const to = query.to ?? defaultRange.to;
+
+    const studentFilter: Record<string, unknown> = {};
+    if (query.batch && query.batch !== 'all') {
+      studentFilter.batch = query.batch;
+    }
+    if (query.studentId && query.studentId !== 'all') {
+      studentFilter.id = query.studentId;
+    }
+    if (query.moduleId && query.moduleId !== 'all') {
+      studentFilter.moduleIds = query.moduleId;
+    }
+    if (query.q && query.q.trim()) {
+      const escaped = this.escapeRegex(query.q.trim());
+      studentFilter.$or = [
+        { fullName: new RegExp(escaped, 'i') },
+        { id: new RegExp(escaped, 'i') },
+      ];
+    }
+
+    const students = await this.studentModel.find(studentFilter).lean<Student[]>().exec();
+
+    const attFilter: Record<string, unknown> = {
+      date: { $gte: from, $lte: to },
+    };
+    if (query.moduleId && query.moduleId !== 'all') {
+      attFilter.moduleId = query.moduleId;
+    }
+    const studentIds = students.map((s) => s.id);
+    attFilter.studentId = { $in: studentIds };
+
+    const records = await this.attendanceModel.find(attFilter).lean<AttendanceRecord[]>().exec();
+
+    const recMap = new Map<string, AttendanceRecord[]>();
+    for (const r of records) {
+      const list = recMap.get(r.studentId) ?? [];
+      list.push(r);
+      recMap.set(r.studentId, list);
+    }
+
+    const summaries: StudentAttendanceSummary[] = [];
+    const overallCounts = { present: 0, absent: 0, late: 0, excused: 0, total: records.length };
+
+    for (const s of students) {
+      const list = recMap.get(s.id) ?? [];
+      const c = { present: 0, absent: 0, late: 0, excused: 0, total: list.length };
+      for (const r of list) {
+        if (r.status in c) {
+          c[r.status as keyof typeof c]++;
+          overallCounts[r.status as keyof typeof c]++;
+        }
+      }
+      const counted = c.total - c.excused;
+      const attended = c.present + c.late;
+      const rate = counted > 0 ? Math.round((attended / counted) * 1000) / 10 : 0;
+
+      summaries.push({
+        student: {
+          id: s.id,
+          fullName: s.fullName,
+          email: s.email,
+          batch: s.batch,
+          status: s.status,
+          phone: s.phone,
+        },
+        present: c.present,
+        absent: c.absent,
+        late: c.late,
+        excused: c.excused,
+        total: c.total,
+        rate,
+      });
+    }
+
+    const overallCounted = overallCounts.total - overallCounts.excused;
+    const overallAttended = overallCounts.present + overallCounts.late;
+    const overallRate = overallCounted > 0 ? Math.round((overallAttended / overallCounted) * 1000) / 10 : 0;
+
+    return {
+      from,
+      to,
+      moduleId: query.moduleId ?? 'all',
+      batch: query.batch ?? 'all',
+      totalStudents: summaries.length,
+      overallCounts,
+      overallRate,
+      summaries,
+    };
+  }
+
+  async getStudentHistory(
+    studentId: string,
+    query?: StudentHistoryQueryDto,
+  ): Promise<StudentHistoryResponse> {
+    const student = await this.resolveStudent(studentId);
+
+    const filter: Record<string, unknown> = { studentId: student.id };
+    if (query?.moduleId && query.moduleId !== 'all') {
+      filter.moduleId = query.moduleId;
+    }
+    if (query?.from || query?.to) {
+      const dateFilter: Record<string, string> = {};
+      if (query.from) dateFilter.$gte = query.from;
+      if (query.to) dateFilter.$lte = query.to;
+      filter.date = dateFilter;
+    }
+
+    const limit = query?.limit ?? 100;
+    const records = await this.attendanceModel
+      .find(filter)
+      .sort({ date: -1, createdAt: -1 })
+      .limit(limit)
+      .lean<AttendanceRecord[]>()
+      .exec();
+
+    const moduleIds = [...new Set(records.map((r) => r.moduleId))];
+    const modules = await this.moduleModel
+      .find({ id: { $in: moduleIds } })
+      .lean<CourseModule[]>()
+      .exec();
+    const modMap = new Map(modules.map((m) => [m.id, m]));
+
+    const counts = { present: 0, absent: 0, late: 0, excused: 0, total: records.length };
+    const populatedRecords: StudentHistoryRecord[] = records.map((r) => {
+      if (r.status in counts) {
+        counts[r.status as keyof typeof counts]++;
+      }
+      const m = modMap.get(r.moduleId);
+      return {
+        ...r,
+        module: m ? { id: m.id, name: m.name, code: m.code } : undefined,
+      };
+    });
+
+    const counted = counts.total - counts.excused;
+    const attended = counts.present + counts.late;
+    const overallRate = counted > 0 ? Math.round((attended / counted) * 1000) / 10 : 0;
+
+    return {
+      student: {
+        id: student.id,
+        fullName: student.fullName,
+        email: student.email,
+        phone: student.phone,
+        batch: student.batch,
+        status: student.status,
+        moduleIds: student.moduleIds,
+      },
+      overallRate,
+      counts,
+      records: populatedRecords,
     };
   }
 
