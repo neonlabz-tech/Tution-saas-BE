@@ -7,6 +7,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { createObserveModule } from '@nestjs/observe';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
+import { AttendanceModule } from './attendance/attendance.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from './auth/guards/roles.guard.js';
@@ -17,6 +18,7 @@ import { MailModule } from './mail/mail.module.js';
 import { FinanceModule } from './finance/finance.module.js';
 import { ModulesModule } from './modules/modules.module.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
+import { OnlineClassesModule } from './online-classes/online-classes.module.js';
 import { OverviewModule } from './overview/overview.module.js';
 import { SettingsModule } from './settings/settings.module.js';
 import { StudentsModule } from './students/students.module.js';
@@ -62,6 +64,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
     AuthModule,
     NotificationsModule,
+    OnlineClassesModule,
     OverviewModule,
     SettingsModule,
     TeachersModule,
@@ -69,6 +72,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     StudentsModule,
     ModulesModule,
     FinanceModule,
+    AttendanceModule,
   ],
   controllers: [AppController],
   providers: [

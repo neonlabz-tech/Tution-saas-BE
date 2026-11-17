@@ -82,6 +82,7 @@ export class StudentsController {
   }
 
   @Get('lookup')
+  @AllowedRoles(Role.ADMIN, Role.SUPER_ADMIN, Role.TEACHER)
   @ApiOperation({
     summary: 'Look up student by EDUFLOW:<ref>, raw <ref>, or STU-YYYY-NNN',
   })
