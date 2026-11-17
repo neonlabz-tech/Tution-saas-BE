@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   NotFoundException,
@@ -13,9 +14,11 @@ import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { vi } from 'vitest';
 import { Role } from '../enums/role.enum.js';
+import { Notification } from '../notifications/schemas/notification.schema.js';
 import { User } from '../users/schemas/user.schema.js';
 import { AuthService } from './auth.service.js';
 import { LoginDto } from './dto/login.dto.js';
+import { MailService } from './mail.service.js';
 
 function mockChain<T>(result: T) {
   return {
@@ -28,7 +31,9 @@ function mockChain<T>(result: T) {
 describe('AuthService', () => {
   let service: AuthService;
   let userModel: Record<string, ReturnType<typeof vi.fn>>;
+  let notificationModel: Record<string, ReturnType<typeof vi.fn>>;
   let jwtService: { signAsync: ReturnType<typeof vi.fn> };
+  let mailService: { sendPasswordResetEmail: ReturnType<typeof vi.fn> };
   let configValues: Record<string, string>;
 
   beforeEach(async () => {
@@ -37,6 +42,7 @@ describe('AuthService', () => {
       JWT_EXPIRES_IN: '7d',
       AUTH_ALLOW_REGISTRATION: 'true',
       INSTITUTE_NAME: 'Bright Future Institute',
+      FRONTEND_URL: 'http://localhost:5173',
     };
 
     userModel = {
@@ -45,15 +51,23 @@ describe('AuthService', () => {
       find: vi.fn(),
       create: vi.fn(),
     };
+    notificationModel = {
+      create: vi.fn().mockResolvedValue({}),
+    };
     jwtService = {
       signAsync: vi.fn().mockResolvedValue('signed-jwt-token'),
+    };
+    mailService = {
+      sendPasswordResetEmail: vi.fn().mockResolvedValue({ delivered: true }),
     };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
         { provide: getModelToken(User.name), useValue: userModel },
+        { provide: getModelToken(Notification.name), useValue: notificationModel },
         { provide: JwtService, useValue: jwtService },
+        { provide: MailService, useValue: mailService },
         {
           provide: ConfigService,
           useValue: {
@@ -166,6 +180,27 @@ describe('AuthService', () => {
       expect(res.accessToken).toBe('signed-jwt-token');
     });
 
+    it('creates notification when student registers', async () => {
+      userModel.findOne.mockReturnValue(mockChain(null));
+      userModel.find.mockReturnValue(mockChain([{ id: 'USR-001' }]));
+      userModel.create.mockImplementation(async (doc) => doc);
+
+      await service.register({
+        fullName: 'Online Student',
+        email: 'student@gmail.com',
+        password: 'Password@123',
+        role: Role.STUDENT,
+      });
+
+      expect(notificationModel.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'student',
+          title: 'New Student Registration: Online Student',
+          link: '/dashboard/students',
+        }),
+      );
+    });
+
     it('throws ConflictException on duplicate email', async () => {
       userModel.findOne.mockReturnValue(mockChain({ id: 'USR-001' }));
 
@@ -218,6 +253,107 @@ describe('AuthService', () => {
       expect(await bcrypt.compare('NewPass@123', userDoc.passwordHash)).toBe(
         true,
       );
+    });
+  });
+
+  describe('forgotPassword', () => {
+    it('generates token and calls mail service for active admin', async () => {
+      const userDoc = {
+        id: 'USR-001',
+        fullName: 'Admin User',
+        email: 'admin@brightfuture.lk',
+        role: Role.ADMIN,
+        isActive: true,
+        resetPasswordToken: null as string | null,
+        resetPasswordExpires: null as Date | null,
+        save: vi.fn().mockResolvedValue(undefined),
+      };
+      userModel.findOne.mockReturnValue(mockChain(userDoc));
+
+      const res = await service.forgotPassword({ email: 'ADMIN@brightfuture.lk' });
+
+      expect(res.message).toContain('If an administrator account with that email exists');
+      expect(userDoc.resetPasswordToken).toBeTruthy();
+      expect(userDoc.resetPasswordExpires).toBeInstanceOf(Date);
+      expect(userDoc.save).toHaveBeenCalled();
+      expect(mailService.sendPasswordResetEmail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: 'admin@brightfuture.lk',
+          fullName: 'Admin User',
+          resetUrl: expect.stringContaining('#/reset-password?token='),
+        }),
+      );
+    });
+
+    it('does not issue token or send email for non-admin user', async () => {
+      const userDoc = {
+        id: 'USR-002',
+        fullName: 'Student User',
+        email: 'student@brightfuture.lk',
+        role: Role.STUDENT,
+        isActive: true,
+        save: vi.fn(),
+      };
+      userModel.findOne.mockReturnValue(mockChain(userDoc));
+
+      const res = await service.forgotPassword({ email: 'student@brightfuture.lk' });
+
+      expect(res.message).toContain('If an administrator account with that email exists');
+      expect(userDoc.save).not.toHaveBeenCalled();
+      expect(mailService.sendPasswordResetEmail).not.toHaveBeenCalled();
+    });
+
+    it('returns safe message when user is not found', async () => {
+      userModel.findOne.mockReturnValue(mockChain(null));
+
+      const res = await service.forgotPassword({ email: 'unknown@brightfuture.lk' });
+
+      expect(res.message).toContain('If an administrator account with that email exists');
+      expect(mailService.sendPasswordResetEmail).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('resetPassword', () => {
+    it('resets password when token is valid and not expired', async () => {
+      const userDoc = {
+        id: 'USR-001',
+        passwordHash: 'oldHash',
+        resetPasswordToken: 'valid-token',
+        resetPasswordExpires: new Date(Date.now() + 100000),
+        save: vi.fn().mockResolvedValue(undefined),
+      };
+      userModel.findOne.mockReturnValue(mockChain(userDoc));
+
+      const res = await service.resetPassword({
+        token: 'valid-token',
+        newPassword: 'newSecretPassword123',
+      });
+
+      expect(res.message).toContain('Password has been reset successfully');
+      expect(userDoc.passwordHash).not.toBe('oldHash');
+      expect(userDoc.resetPasswordToken).toBeNull();
+      expect(userDoc.resetPasswordExpires).toBeNull();
+      expect(userDoc.save).toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when token is invalid or expired', async () => {
+      userModel.findOne.mockReturnValue(mockChain(null));
+
+      await expect(
+        service.resetPassword({
+          token: 'expired-or-invalid-token',
+          newPassword: 'newSecretPassword123',
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('throws BadRequestException when new password does not meet min length', async () => {
+      await expect(
+        service.resetPassword({
+          token: 'valid-token',
+          newPassword: 'short',
+        }),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 

@@ -7,17 +7,19 @@ import {
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule, ObserveInstrument } from './app.module.js';
-import { AllExceptionsFilter, HttpExceptionFilter } from './common/filters/index.js';
+import {
+  AllExceptionsFilter,
+  HttpExceptionFilter,
+} from './common/filters/index.js';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule, {
     instrument: ObserveInstrument,
   });
-
   const allowedOrigins = (
     process.env.CORS_ORIGINS ??
-    'http://localhost:3000,http://localhost:3001,http://localhost:5173'
+    'https://tution-saas-fe.vercel.app,http://localhost:3000,http://localhost:3001'
   )
     .split(',')
     .map((origin) => origin.trim())
@@ -28,19 +30,22 @@ async function bootstrap() {
       origin: string | undefined,
       callback: (err: Error | null, allow?: boolean) => void,
     ) => {
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (
+        !origin ||
+        allowedOrigins.includes(origin) ||
+        process.env.NODE_ENV !== 'production'
+      ) {
         callback(null, true);
       } else {
         callback(new Error('Not allowed by CORS'));
       }
     },
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Cookie'],
     credentials: true,
     preflightContinue: false,
     optionsSuccessStatus: 204,
   });
-
   app.useGlobalPipes(
     new StandardSchemaValidationPipe({
       exceptionFactory: (issues) =>
@@ -70,6 +75,12 @@ async function bootstrap() {
 
   app.useGlobalFilters(new HttpExceptionFilter(), new AllExceptionsFilter());
   app.setGlobalPrefix('api');
+  app.use((req: { url: string }, _res: unknown, next: () => void) => {
+    if (req.url && !req.url.startsWith('/api') && req.url !== '/') {
+      req.url = `/api${req.url}`;
+    }
+    next();
+  });
   app.enableShutdownHooks();
 
   const swaggerConfig = new DocumentBuilder()
