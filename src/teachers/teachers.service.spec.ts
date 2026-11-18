@@ -54,7 +54,7 @@ describe('TeachersService', () => {
       batches: ['2026-A Weekend'],
       moduleIds: [],
       joiningDate: '2023-01-30',
-      status: TeacherStatus.ON_LEAVE,
+      status: TeacherStatus.INACTIVE,
     },
   ];
 
@@ -165,6 +165,7 @@ describe('TeachersService', () => {
             {
               totalTeachers: 2,
               activeTeachers: 1,
+              inactiveTeachers: 1,
               totalAssignedModules: 2,
               teachersWithoutModules: 1,
             },
@@ -183,6 +184,7 @@ describe('TeachersService', () => {
       expect(res.metrics).toEqual({
         totalTeachers: 2,
         activeTeachers: 1,
+        inactiveTeachers: 1,
         weeklyTeachingHours: 6,
         teachersWithoutModules: 1,
       });
@@ -199,6 +201,7 @@ describe('TeachersService', () => {
             {
               totalTeachers: 2,
               activeTeachers: 1,
+              inactiveTeachers: 1,
               totalAssignedModules: 2,
               teachersWithoutModules: 1,
             },
@@ -380,6 +383,24 @@ describe('TeachersService', () => {
         service.create({
           fullName: 'Duplicate Teacher',
           email: 'anura.w@eduflow.lk',
+          phone: '0771234501',
+          qualification: 'MSc',
+          specialization: 'Math',
+          batches: ['2025-A Morning'],
+          joiningDate: '2026-11-11',
+        }),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('throws ConflictException when phone already exists', async () => {
+      teacherModel.findOne
+        .mockReturnValueOnce(mockQuery(null))
+        .mockReturnValueOnce(mockQuery(sampleTeachers[0]));
+
+      await expect(
+        service.create({
+          fullName: 'Duplicate Phone Teacher',
+          email: 'unique@eduflow.lk',
           phone: '0771234501',
           qualification: 'MSc',
           specialization: 'Math',

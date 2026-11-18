@@ -15,7 +15,7 @@ export class Teacher {
   @Prop({ required: true, unique: true, lowercase: true, trim: true })
   email: string;
 
-  @Prop({ required: true, trim: true })
+  @Prop({ required: true, unique: true, index: true, trim: true })
   phone: string;
 
   @Prop({ default: '', trim: true })

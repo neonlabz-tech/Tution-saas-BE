@@ -22,7 +22,6 @@ export class User {
     type: String,
     enum: Object.values(Role),
     default: Role.ADMIN,
-    index: true,
   })
   role: Role;
 

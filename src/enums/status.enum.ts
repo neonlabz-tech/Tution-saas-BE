@@ -1,6 +1,5 @@
 export enum TeacherStatus {
   ACTIVE = 'active',
-  ON_LEAVE = 'on-leave',
   INACTIVE = 'inactive',
 }
 
