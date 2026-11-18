@@ -75,23 +75,35 @@ export class AuthService implements OnModuleInit {
     const email = cfg.defaultAdminEmail.trim().toLowerCase();
     if (!email || !cfg.defaultAdminPassword) return;
 
-    const existing = await this.userModel.findOne({ email }).exec();
+    // Maintain strictly one admin account: find by email or find existing admin
+    const existing =
+      (await this.userModel.findOne({ email }).exec()) ??
+      (await this.userModel.findOne({ role: Role.ADMIN }).exec());
+
     const passwordHash = await bcrypt.hash(
       cfg.defaultAdminPassword,
       cfg.bcryptSaltRounds,
     );
 
     if (existing) {
+      existing.email = email;
+      existing.fullName = cfg.defaultAdminName || existing.fullName;
       existing.passwordHash = passwordHash;
       existing.role = Role.ADMIN;
       existing.isActive = true;
       await existing.save();
-      this.logger.log(`Synced admin account "${email}" from environment`);
+      await this.userModel
+        .deleteMany({
+          role: Role.ADMIN,
+          _id: { $ne: existing._id },
+        })
+        .exec();
+      this.logger.log(`Synced single admin account "${email}" from environment`);
       return;
     }
 
     const id = await this.generateNextUserId();
-    await this.userModel.create({
+    const newAdmin = await this.userModel.create({
       id,
       fullName: cfg.defaultAdminName,
       email,
@@ -100,6 +112,12 @@ export class AuthService implements OnModuleInit {
       isActive: true,
       lastLoginAt: null,
     });
+    await this.userModel
+      .deleteMany({
+        role: Role.ADMIN,
+        _id: { $ne: newAdmin._id },
+      })
+      .exec();
 
     this.logger.log(`Seeded admin account "${email}" from environment`);
   }
@@ -160,6 +178,19 @@ export class AuthService implements OnModuleInit {
       throw new ConflictException(
         `An account with email "${normalizedEmail}" already exists`,
       );
+    }
+
+    const targetRole = dto.role ?? Role.ADMIN;
+    if (targetRole === Role.ADMIN) {
+      const existingAdmin = await this.userModel
+        .findOne({ role: Role.ADMIN })
+        .lean<User>()
+        .exec();
+      if (existingAdmin) {
+        throw new ForbiddenException(
+          'An administrator account already exists. Only one administrator is allowed.',
+        );
+      }
     }
 
     const id = await this.generateNextUserId();
