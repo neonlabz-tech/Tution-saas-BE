@@ -7,6 +7,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { createObserveModule } from '@nestjs/observe';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
+import { AnalyticsModule } from './analytics/analytics.module.js';
 import { AttendanceModule } from './attendance/attendance.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard.js';
@@ -73,6 +74,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     ModulesModule,
     FinanceModule,
     AttendanceModule,
+    AnalyticsModule,
   ],
   controllers: [AppController],
   providers: [
