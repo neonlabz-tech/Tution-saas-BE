@@ -153,7 +153,6 @@ describe('TeachersService', () => {
           workload: {
             modulesCount: 2,
             studentsCount: 2,
-            hoursPerWeek: 6,
           },
         },
       ];
@@ -185,7 +184,6 @@ describe('TeachersService', () => {
         totalTeachers: 2,
         activeTeachers: 1,
         inactiveTeachers: 1,
-        weeklyTeachingHours: 6,
         teachersWithoutModules: 1,
       });
       expect(res.data).toHaveLength(1);
@@ -267,7 +265,6 @@ describe('TeachersService', () => {
       expect(res.workload).toEqual({
         modulesCount: 2,
         studentsCount: 2,
-        hoursPerWeek: 6,
       });
       expect(res.upcomingSchedule).toEqual(upcoming);
     });
@@ -486,7 +483,6 @@ describe('TeachersService', () => {
 
       expect(res.moduleIds).toEqual(['mod_mth', 'mod_acc']);
       expect(res.workload.modulesCount).toBe(2);
-      expect(res.workload.hoursPerWeek).toBe(6);
     });
 
     it('throws NotFoundException if teacher does not exist', async () => {

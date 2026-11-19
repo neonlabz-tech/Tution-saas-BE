@@ -43,7 +43,6 @@ describe('TeachersController', () => {
         totalTeachers: 0,
         activeTeachers: 0,
         inactiveTeachers: 0,
-        weeklyTeachingHours: 0,
         teachersWithoutModules: 0,
       },
     };

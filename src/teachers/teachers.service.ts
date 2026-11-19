@@ -31,7 +31,6 @@ import { CreateTeacherDto } from './dto/create-teacher.dto.js';
 import { UpdateTeacherDto } from './dto/update-teacher.dto.js';
 import { Teacher, type TeacherDocument } from './schemas/teacher.schema.js';
 
-const HOURS_PER_MODULE = 3;
 const UPCOMING_SCHEDULE_LIMIT = 8;
 const ALLOWED_SORT_FIELDS = new Set([
   'createdAt',
@@ -54,7 +53,7 @@ export interface TeacherModuleSummary {
 export interface TeacherWorkload {
   modulesCount: number;
   studentsCount: number;
-  hoursPerWeek: number;
+  hoursPerWeek?: number;
 }
 
 export interface TeacherListItem extends Teacher {
@@ -66,7 +65,7 @@ export interface TeachersMetrics {
   totalTeachers: number;
   activeTeachers: number;
   inactiveTeachers: number;
-  weeklyTeachingHours: number;
+  weeklyTeachingHours?: number;
   teachersWithoutModules: number;
 }
 
@@ -228,18 +227,6 @@ export class TeachersService {
               ],
             },
             studentsCount: { $size: '$enrolledStudents' },
-            hoursPerWeek: {
-              $multiply: [
-                {
-                  $cond: [
-                    { $gt: [{ $size: '$assignedModulesRaw' }, 0] },
-                    { $size: '$assignedModulesRaw' },
-                    { $size: { $ifNull: ['$moduleIds', []] } },
-                  ],
-                },
-                HOURS_PER_MODULE,
-              ],
-            },
           },
         },
       },
@@ -336,7 +323,6 @@ export class TeachersService {
       totalTeachers: summary.totalTeachers,
       activeTeachers: summary.activeTeachers,
       inactiveTeachers: summary.inactiveTeachers,
-      weeklyTeachingHours: summary.totalAssignedModules * HOURS_PER_MODULE,
       teachersWithoutModules: summary.teachersWithoutModules,
     };
 
@@ -582,7 +568,6 @@ export class TeachersService {
       workload: {
         ...workload,
         modulesCount: fallbackModuleCount,
-        hoursPerWeek: fallbackModuleCount * HOURS_PER_MODULE,
       },
       upcomingSchedule,
     };
@@ -624,7 +609,6 @@ export class TeachersService {
       workload: {
         modulesCount: assignedModules.length,
         studentsCount: uniqueStudents.size,
-        hoursPerWeek: assignedModules.length * HOURS_PER_MODULE,
       },
     };
   }
