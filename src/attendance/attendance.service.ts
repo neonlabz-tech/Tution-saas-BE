@@ -249,7 +249,10 @@ export class AttendanceService {
   async verifyQr(dto: VerifyQrDto): Promise<VerifyQrResponse> {
     const student = await this.resolveStudent(dto.code);
 
-    if (student.status !== 'active') {
+    if (student.status === 'pending') {
+      await this.studentModel.updateOne({ id: student.id }, { $set: { status: 'active' } });
+      student.status = 'active';
+    } else if (student.status !== 'active') {
       throw new BadRequestException(
         `Student "${student.fullName}" is marked as ${student.status}. Attendance can only be verified for active students.`,
       );
@@ -318,7 +321,10 @@ export class AttendanceService {
   async markQrAttendance(dto: MarkQrAttendanceDto): Promise<MarkAttendanceResponse> {
     const student = await this.resolveStudent(dto.code);
 
-    if (student.status !== 'active') {
+    if (student.status === 'pending') {
+      await this.studentModel.updateOne({ id: student.id }, { $set: { status: 'active' } });
+      student.status = 'active';
+    } else if (student.status !== 'active') {
       throw new BadRequestException(
         `Student "${student.fullName}" is marked as ${student.status}. Only active students can be marked present.`,
       );
@@ -386,7 +392,10 @@ export class AttendanceService {
   async upsertAttendance(dto: UpsertAttendanceDto): Promise<MarkAttendanceResponse> {
     const student = await this.resolveStudent(dto.studentId);
 
-    if (student.status !== 'active') {
+    if (student.status === 'pending') {
+      await this.studentModel.updateOne({ id: student.id }, { $set: { status: 'active' } });
+      student.status = 'active';
+    } else if (student.status !== 'active') {
       throw new BadRequestException(
         `Student "${student.fullName}" is marked as ${student.status}. Attendance can only be updated for active students.`,
       );
@@ -471,7 +480,9 @@ export class AttendanceService {
   async getDailyRoster(query: DailyRosterQueryDto): Promise<DailyRosterResponse> {
     const date = query.date ?? new Date().toISOString().slice(0, 10);
 
-    const studentFilter: Record<string, unknown> = { status: 'active' };
+    const studentFilter: Record<string, unknown> = {
+      status: { $in: ['active', 'pending'] },
+    };
     if (query.batch && query.batch !== 'all') {
       studentFilter.batch = query.batch;
     }
@@ -481,12 +492,31 @@ export class AttendanceService {
     if (query.moduleId && query.moduleId !== 'all') {
       studentFilter.moduleIds = query.moduleId;
     }
-    if (query.q && query.q.trim()) {
-      const escaped = this.escapeRegex(query.q.trim());
-      studentFilter.$or = [
+    const searchTerm = (query.q || query.search)?.trim();
+    let matchingModuleIds: string[] = [];
+    if (searchTerm) {
+      const escaped = this.escapeRegex(searchTerm);
+      const matchedMods = await this.moduleModel
+        .find({
+          $or: [
+            { name: new RegExp(escaped, 'i') },
+            { code: new RegExp(escaped, 'i') },
+            { id: new RegExp(escaped, 'i') },
+          ],
+        })
+        .lean<CourseModule[]>()
+        .exec();
+      matchingModuleIds = matchedMods.map((m) => m.id);
+
+      const orConditions: Array<Record<string, unknown>> = [
         { fullName: new RegExp(escaped, 'i') },
         { id: new RegExp(escaped, 'i') },
+        { email: new RegExp(escaped, 'i') },
       ];
+      if (matchingModuleIds.length > 0) {
+        orConditions.push({ moduleIds: { $in: matchingModuleIds } });
+      }
+      studentFilter.$or = orConditions;
     }
 
     const students = await this.studentModel.find(studentFilter).lean<Student[]>().exec();
@@ -517,6 +547,23 @@ export class AttendanceService {
           teacherId: null,
           fee: 0,
         };
+
+        if (searchTerm) {
+          const lower = searchTerm.toLowerCase();
+          const matchStudent =
+            student.fullName?.toLowerCase().includes(lower) ||
+            student.id?.toLowerCase().includes(lower) ||
+            student.email?.toLowerCase().includes(lower) ||
+            student.batch?.toLowerCase().includes(lower);
+          const matchModule =
+            mod.name?.toLowerCase().includes(lower) ||
+            mod.code?.toLowerCase().includes(lower) ||
+            mod.id?.toLowerCase().includes(lower);
+
+          if (!matchStudent && !matchModule) {
+            continue;
+          }
+        }
         const key = `att_${student.id}_${mid}_${date}`;
         const record = recordMap.get(key) ?? null;
 
@@ -565,7 +612,9 @@ export class AttendanceService {
     const status = dto.status ?? AttendanceStatus.PRESENT;
     const method = dto.method ?? 'manual';
 
-    const studentFilter: Record<string, unknown> = { status: 'active' };
+    const studentFilter: Record<string, unknown> = {
+      status: { $in: ['active', 'pending'] },
+    };
     if (dto.batch && dto.batch !== 'all') {
       studentFilter.batch = dto.batch;
     }
@@ -643,12 +692,31 @@ export class AttendanceService {
     if (query.moduleId && query.moduleId !== 'all') {
       studentFilter.moduleIds = query.moduleId;
     }
-    if (query.q && query.q.trim()) {
-      const escaped = this.escapeRegex(query.q.trim());
-      studentFilter.$or = [
+    const searchTerm = (query.q || query.search)?.trim();
+    let matchingModuleIds: string[] = [];
+    if (searchTerm) {
+      const escaped = this.escapeRegex(searchTerm);
+      const matchedMods = await this.moduleModel
+        .find({
+          $or: [
+            { name: new RegExp(escaped, 'i') },
+            { code: new RegExp(escaped, 'i') },
+            { id: new RegExp(escaped, 'i') },
+          ],
+        })
+        .lean<CourseModule[]>()
+        .exec();
+      matchingModuleIds = matchedMods.map((m) => m.id);
+
+      const orConditions: Array<Record<string, unknown>> = [
         { fullName: new RegExp(escaped, 'i') },
         { id: new RegExp(escaped, 'i') },
+        { email: new RegExp(escaped, 'i') },
       ];
+      if (matchingModuleIds.length > 0) {
+        orConditions.push({ moduleIds: { $in: matchingModuleIds } });
+      }
+      studentFilter.$or = orConditions;
     }
 
     const students = await this.studentModel.find(studentFilter).lean<Student[]>().exec();
