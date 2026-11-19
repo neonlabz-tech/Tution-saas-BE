@@ -31,7 +31,6 @@ import { CreateTeacherDto } from './dto/create-teacher.dto.js';
 import { UpdateTeacherDto } from './dto/update-teacher.dto.js';
 import { Teacher, type TeacherDocument } from './schemas/teacher.schema.js';
 
-const HOURS_PER_MODULE = 3;
 const UPCOMING_SCHEDULE_LIMIT = 8;
 const ALLOWED_SORT_FIELDS = new Set([
   'createdAt',
@@ -54,7 +53,7 @@ export interface TeacherModuleSummary {
 export interface TeacherWorkload {
   modulesCount: number;
   studentsCount: number;
-  hoursPerWeek: number;
+  hoursPerWeek?: number;
 }
 
 export interface TeacherListItem extends Teacher {
@@ -65,7 +64,8 @@ export interface TeacherListItem extends Teacher {
 export interface TeachersMetrics {
   totalTeachers: number;
   activeTeachers: number;
-  weeklyTeachingHours: number;
+  inactiveTeachers: number;
+  weeklyTeachingHours?: number;
   teachersWithoutModules: number;
 }
 
@@ -227,18 +227,6 @@ export class TeachersService {
               ],
             },
             studentsCount: { $size: '$enrolledStudents' },
-            hoursPerWeek: {
-              $multiply: [
-                {
-                  $cond: [
-                    { $gt: [{ $size: '$assignedModulesRaw' }, 0] },
-                    { $size: '$assignedModulesRaw' },
-                    { $size: { $ifNull: ['$moduleIds', []] } },
-                  ],
-                },
-                HOURS_PER_MODULE,
-              ],
-            },
           },
         },
       },
@@ -292,6 +280,11 @@ export class TeachersService {
               $cond: [{ $eq: ['$status', TeacherStatus.ACTIVE] }, 1, 0],
             },
           },
+          inactiveTeachers: {
+            $sum: {
+              $cond: [{ $eq: ['$status', TeacherStatus.INACTIVE] }, 1, 0],
+            },
+          },
           totalAssignedModules: { $sum: '$effectiveModuleCount' },
           teachersWithoutModules: {
             $sum: {
@@ -311,6 +304,7 @@ export class TeachersService {
         .aggregate<{
           totalTeachers: number;
           activeTeachers: number;
+          inactiveTeachers: number;
           totalAssignedModules: number;
           teachersWithoutModules: number;
         }>(metricsPipeline)
@@ -320,6 +314,7 @@ export class TeachersService {
     const summary = metricsRows[0] ?? {
       totalTeachers: 0,
       activeTeachers: 0,
+      inactiveTeachers: 0,
       totalAssignedModules: 0,
       teachersWithoutModules: 0,
     };
@@ -327,7 +322,7 @@ export class TeachersService {
     const metrics: TeachersMetrics = {
       totalTeachers: summary.totalTeachers,
       activeTeachers: summary.activeTeachers,
-      weeklyTeachingHours: summary.totalAssignedModules * HOURS_PER_MODULE,
+      inactiveTeachers: summary.inactiveTeachers,
       teachersWithoutModules: summary.teachersWithoutModules,
     };
 
@@ -360,6 +355,17 @@ export class TeachersService {
     if (existingEmail) {
       throw new ConflictException(
         `A teacher with email "${normalizedEmail}" already exists`,
+      );
+    }
+
+    const trimmedPhone = dto.phone.trim();
+    const existingPhone = await this.teacherModel
+      .findOne({ phone: trimmedPhone })
+      .lean<Teacher>()
+      .exec();
+    if (existingPhone) {
+      throw new ConflictException(
+        `A teacher with phone number "${trimmedPhone}" already exists`,
       );
     }
 
@@ -433,6 +439,22 @@ export class TeachersService {
       }
     }
 
+    let trimmedPhone: string | undefined;
+    if (dto.phone !== undefined) {
+      trimmedPhone = dto.phone.trim();
+      if (trimmedPhone !== existing.phone) {
+        const phoneOwner = await this.teacherModel
+          .findOne({ phone: trimmedPhone, id: { $ne: id } })
+          .lean<Teacher>()
+          .exec();
+        if (phoneOwner) {
+          throw new ConflictException(
+            `A teacher with phone number "${trimmedPhone}" already exists`,
+          );
+        }
+      }
+    }
+
     const moduleIds =
       dto.moduleIds !== undefined ? [...new Set(dto.moduleIds)] : undefined;
     if (moduleIds !== undefined) {
@@ -442,7 +464,7 @@ export class TeachersService {
     const updatePayload: Partial<Teacher> = {};
     if (dto.fullName !== undefined) updatePayload.fullName = dto.fullName.trim();
     if (normalizedEmail !== undefined) updatePayload.email = normalizedEmail;
-    if (dto.phone !== undefined) updatePayload.phone = dto.phone.trim();
+    if (trimmedPhone !== undefined) updatePayload.phone = trimmedPhone;
     if (dto.qualification !== undefined)
       updatePayload.qualification = dto.qualification.trim();
     if (dto.specialization !== undefined)
@@ -546,7 +568,6 @@ export class TeachersService {
       workload: {
         ...workload,
         modulesCount: fallbackModuleCount,
-        hoursPerWeek: fallbackModuleCount * HOURS_PER_MODULE,
       },
       upcomingSchedule,
     };
@@ -588,7 +609,6 @@ export class TeachersService {
       workload: {
         modulesCount: assignedModules.length,
         studentsCount: uniqueStudents.size,
-        hoursPerWeek: assignedModules.length * HOURS_PER_MODULE,
       },
     };
   }

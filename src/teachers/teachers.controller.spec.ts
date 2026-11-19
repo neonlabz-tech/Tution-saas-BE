@@ -42,7 +42,7 @@ describe('TeachersController', () => {
       metrics: {
         totalTeachers: 0,
         activeTeachers: 0,
-        weeklyTeachingHours: 0,
+        inactiveTeachers: 0,
         teachersWithoutModules: 0,
       },
     };
