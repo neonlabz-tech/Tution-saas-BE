@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { type Model, Types } from 'mongoose';
@@ -10,6 +11,10 @@ import {
   CourseModule,
   type CourseModuleDocument,
 } from '../modules/schemas/module.schema.js';
+import {
+  Payment,
+  type PaymentDocument,
+} from '../payments/schemas/payment.schema.js';
 import { Counter, type CounterDocument } from '../students/schemas/counter.schema.js';
 import {
   Student,
@@ -188,6 +193,10 @@ export class FinanceService {
 
     @InjectModel(Counter.name)
     private readonly counterModel: Model<CounterDocument>,
+
+    @Optional()
+    @InjectModel(Payment.name)
+    private readonly paymentModel?: Model<PaymentDocument>,
   ) {}
 
   async getTransactions(
@@ -613,6 +622,30 @@ export class FinanceService {
       throw new NotFoundException(`Transaction "${id}" not found`);
     }
 
+    if (this.paymentModel) {
+      if (updated.type === TxType.INCOME && updated.studentId) {
+        await this.paymentModel
+          .updateOne(
+            { transactionId: updated.id },
+            {
+              $set: {
+                studentId: updated.studentId,
+                amount: updated.amount,
+                category: updated.category,
+                method: updated.method ?? 'Cash',
+                date: updated.date,
+                description: updated.description ?? '',
+              },
+            },
+          )
+          .exec();
+      } else {
+        await this.paymentModel
+          .deleteOne({ transactionId: updated.id })
+          .exec();
+      }
+    }
+
     return this.toTransactionItem(updated);
   }
 
@@ -627,6 +660,12 @@ export class FinanceService {
     }
 
     await this.transactionModel.deleteOne({ _id: existing._id }).exec();
+
+    if (this.paymentModel) {
+      await this.paymentModel
+        .deleteOne({ transactionId: existing.id })
+        .exec();
+    }
 
     return {
       deleted: true,
@@ -779,6 +818,27 @@ export class FinanceService {
       method: dto.method,
     });
 
+    if (this.paymentModel) {
+      const year = now.getUTCFullYear();
+      const [paymentId, receiptNo] = await Promise.all([
+        this.generateCounterSequenceId('payment', 'PAY', year),
+        this.generateCounterSequenceId('receipt', 'RCP', year),
+      ]);
+      await this.paymentModel.create({
+        id: paymentId,
+        receiptNo,
+        studentId: student.id,
+        amount: dto.amount,
+        discount: 0,
+        category: dto.category,
+        method: dto.method,
+        date,
+        description: created.description,
+        status: 'completed',
+        transactionId: created.id,
+      });
+    }
+
     const [modules, tuitionPayments] = await Promise.all([
       student.moduleIds?.length
         ? this.moduleModel
@@ -885,9 +945,17 @@ export class FinanceService {
   }
 
   private async generateNextTransactionId(year: number): Promise<string> {
+    return this.generateCounterSequenceId('transaction', 'TX', year);
+  }
+
+  private async generateCounterSequenceId(
+    counterPrefix: 'transaction' | 'payment' | 'receipt',
+    idPrefix: 'TX' | 'PAY' | 'RCP',
+    year: number,
+  ): Promise<string> {
     const counter = await this.counterModel
       .findOneAndUpdate(
-        { _id: `transaction:${year}` },
+        { _id: `${counterPrefix}:${year}` },
         { $inc: { seq: 1 } },
         { upsert: true, returnDocument: 'after' },
       )
@@ -895,6 +963,6 @@ export class FinanceService {
       .exec();
 
     const seq = counter?.seq ?? 1;
-    return `TX-${year}-${String(seq).padStart(3, '0')}`;
+    return `${idPrefix}-${year}-${String(seq).padStart(3, '0')}`;
   }
 }

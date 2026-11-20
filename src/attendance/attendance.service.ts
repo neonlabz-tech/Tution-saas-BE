@@ -6,7 +6,11 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import type { Model } from 'mongoose';
-import { AttendanceStatus } from '../enums/status.enum.js';
+import { AttendanceStatus, TxType } from '../enums/status.enum.js';
+import {
+  Transaction,
+  type TransactionDocument,
+} from '../finance/schemas/transaction.schema.js';
 import {
   CourseModule,
   type CourseModuleDocument,
@@ -41,6 +45,10 @@ export interface VerifyQrResponse {
     batch: string;
     status: string;
     moduleIds: string[];
+    feeTotal: number;
+    paidTotal: number;
+    outstanding: number;
+    paymentStatus: 'paid' | 'partial' | 'unpaid';
   };
   enrolledInModule?: boolean;
   alreadyMarked?: boolean;
@@ -197,6 +205,9 @@ export class AttendanceService {
     private readonly studentModel: Model<StudentDocument>,
     @InjectModel(CourseModule.name)
     private readonly moduleModel: Model<CourseModuleDocument>,
+
+    @InjectModel(Transaction.name)
+    private readonly transactionModel: Model<TransactionDocument>,
   ) {}
 
   private escapeRegex(str: string): string {
@@ -255,6 +266,7 @@ export class AttendanceService {
       );
     }
 
+    const paymentBalance = await this.computeStudentPaymentBalance(student);
     const today = dto.date ?? new Date().toISOString().slice(0, 10);
     let enrolledInModule: boolean | undefined = undefined;
     let alreadyMarked: boolean | undefined = undefined;
@@ -284,6 +296,7 @@ export class AttendanceService {
             batch: student.batch,
             status: student.status,
             moduleIds: student.moduleIds,
+            ...paymentBalance,
           },
           enrolledInModule: false,
           alreadyMarked: false,
@@ -308,10 +321,55 @@ export class AttendanceService {
         batch: student.batch,
         status: student.status,
         moduleIds: student.moduleIds,
+        ...paymentBalance,
       },
       enrolledInModule,
       alreadyMarked,
       existingAttendance,
+    };
+  }
+
+  private async computeStudentPaymentBalance(
+    student: Pick<Student, 'id' | 'moduleIds'>,
+  ): Promise<{
+    feeTotal: number;
+    paidTotal: number;
+    outstanding: number;
+    paymentStatus: 'paid' | 'partial' | 'unpaid';
+  }> {
+    const [enrolledModules, tuitionTransactions] = await Promise.all([
+      student.moduleIds?.length
+        ? this.moduleModel
+            .find({ id: { $in: student.moduleIds } })
+            .select('fee')
+            .lean<Array<Pick<CourseModule, 'fee'>>>()
+            .exec()
+        : Promise.resolve([]),
+      this.transactionModel
+        .find({
+          studentId: student.id,
+          type: TxType.INCOME,
+          category: 'Tuition fees',
+        })
+        .select('amount')
+        .lean<Array<Pick<Transaction, 'amount'>>>()
+        .exec(),
+    ]);
+
+    const feeTotal = enrolledModules.reduce((sum, m) => sum + (m.fee ?? 0), 0);
+    const paidTotal = tuitionTransactions.reduce(
+      (sum, tx) => sum + (tx.amount ?? 0),
+      0,
+    );
+    const outstanding = Math.max(0, feeTotal - paidTotal);
+    const paymentStatus: 'paid' | 'partial' | 'unpaid' =
+      outstanding <= 0 ? 'paid' : paidTotal > 0 ? 'partial' : 'unpaid';
+
+    return {
+      feeTotal,
+      paidTotal,
+      outstanding,
+      paymentStatus,
     };
   }
 
