@@ -21,6 +21,7 @@ import { ModulesModule } from './modules/modules.module.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
 import { OnlineClassesModule } from './online-classes/online-classes.module.js';
 import { OverviewModule } from './overview/overview.module.js';
+import { PaymentsModule } from './payments/payments.module.js';
 import { SettingsModule } from './settings/settings.module.js';
 import { StudentsModule } from './students/students.module.js';
 import { TeachersModule } from './teachers/teachers.module.js';
@@ -73,6 +74,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     StudentsModule,
     ModulesModule,
     FinanceModule,
+    PaymentsModule,
     AttendanceModule,
     AnalyticsModule,
   ],
