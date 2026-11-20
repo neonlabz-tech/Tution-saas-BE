@@ -8,7 +8,6 @@ import {
   CourseModule,
   CourseModuleSchema,
 } from '../modules/schemas/module.schema.js';
-import { Notice, NoticeSchema } from '../notices/schemas/notice.schema.js';
 import {
   OnlineClass,
   OnlineClassSchema,
@@ -29,7 +28,6 @@ import {
   imports: [
     MongooseModule.forFeature([
       { name: Notification.name, schema: NotificationSchema },
-      { name: Notice.name, schema: NoticeSchema },
       { name: OnlineClass.name, schema: OnlineClassSchema },
       { name: Student.name, schema: StudentSchema },
       { name: CourseModule.name, schema: CourseModuleSchema },

@@ -5,13 +5,10 @@ import { vi } from 'vitest';
 import {
   ClassStatus,
   ModuleStatus,
-  NoticePriority,
-  NoticeStatus,
   TxType,
 } from '../enums/status.enum.js';
 import { Transaction } from '../finance/schemas/transaction.schema.js';
 import { CourseModule } from '../modules/schemas/module.schema.js';
-import { Notice } from '../notices/schemas/notice.schema.js';
 import { OnlineClass } from '../online-classes/schemas/online-class.schema.js';
 import { Settings } from '../settings/schemas/settings.schema.js';
 import { Student } from '../students/schemas/student.schema.js';
@@ -30,7 +27,6 @@ function mockChain<T>(result: T) {
 describe('NotificationsService', () => {
   let service: NotificationsService;
   let notificationModel: Record<string, ReturnType<typeof vi.fn>>;
-  let noticeModel: Record<string, ReturnType<typeof vi.fn>>;
   let onlineClassModel: Record<string, ReturnType<typeof vi.fn>>;
   let studentModel: Record<string, ReturnType<typeof vi.fn>>;
   let moduleModel: Record<string, ReturnType<typeof vi.fn>>;
@@ -47,7 +43,6 @@ describe('NotificationsService', () => {
       deleteOne: vi.fn(),
       deleteMany: vi.fn().mockReturnValue({ exec: vi.fn().mockResolvedValue({ deletedCount: 0 }) }),
     };
-    noticeModel = { find: vi.fn() };
     onlineClassModel = { find: vi.fn() };
     studentModel = { find: vi.fn() };
     moduleModel = { find: vi.fn() };
@@ -58,7 +53,6 @@ describe('NotificationsService', () => {
       providers: [
         NotificationsService,
         { provide: getModelToken(Notification.name), useValue: notificationModel },
-        { provide: getModelToken(Notice.name), useValue: noticeModel },
         { provide: getModelToken(OnlineClass.name), useValue: onlineClassModel },
         { provide: getModelToken(Student.name), useValue: studentModel },
         { provide: getModelToken(CourseModule.name), useValue: moduleModel },
@@ -70,7 +64,7 @@ describe('NotificationsService', () => {
     service = module.get<NotificationsService>(NotificationsService);
   });
 
-  it('aggregates persisted notifications, high-priority notices, upcoming classes, and overdue balances', async () => {
+  it('aggregates persisted notifications, upcoming classes, and overdue balances (no notice alerts)', async () => {
     notificationModel.find.mockReturnValue(
       mockChain([
         {
@@ -81,17 +75,6 @@ describe('NotificationsService', () => {
           link: '/dashboard',
           read: false,
           recipientId: null,
-        },
-      ]),
-    );
-    noticeModel.find.mockReturnValue(
-      mockChain([
-        {
-          _id: 'abc123',
-          title: 'Class Cancelled',
-          priority: NoticePriority.HIGH,
-          status: NoticeStatus.PUBLISHED,
-          expiryDate: '2099-12-31',
         },
       ]),
     );
@@ -138,14 +121,9 @@ describe('NotificationsService', () => {
 
     const res = await service.getNotifications();
 
-    expect(res.items).toHaveLength(4);
-    expect(res.unreadCount).toBe(4);
-    expect(res.items.map((i) => i.type)).toEqual([
-      'system',
-      'notice',
-      'class',
-      'payment',
-    ]);
+    expect(res.items).toHaveLength(3);
+    expect(res.unreadCount).toBe(3);
+    expect(res.items.map((i) => i.type)).toEqual(['system', 'class', 'payment']);
   });
 
   it('generates notifications for student registered today and payment received today', async () => {
@@ -154,7 +132,6 @@ describe('NotificationsService', () => {
     const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 
     notificationModel.find.mockReturnValue(mockChain([]));
-    noticeModel.find.mockReturnValue(mockChain([]));
     onlineClassModel.find.mockReturnValue(mockChain([]));
     studentModel.find.mockReturnValue(
       mockChain([
@@ -249,7 +226,6 @@ describe('NotificationsService', () => {
     notificationModel.find.mockReturnValue(
       mockChain([{ id: 'notif_1', read: false, isReceipt: false }]),
     );
-    noticeModel.find.mockReturnValue(mockChain([]));
     onlineClassModel.find.mockReturnValue(mockChain([]));
     studentModel.find.mockReturnValue(mockChain([]));
     moduleModel.find.mockReturnValue(mockChain([]));
