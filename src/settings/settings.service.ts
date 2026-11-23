@@ -16,6 +16,7 @@ import { UpdateAppearanceDto } from './dto/update-appearance.dto.js';
 import { UpdateInstituteDto } from './dto/update-institute.dto.js';
 import { UpdateNotificationsDto } from './dto/update-notifications.dto.js';
 import { UpdateProfileDto } from './dto/update-profile.dto.js';
+import { StorageService } from '../storage/storage.service.js';
 import {
   type AppearanceSettings,
   type InstituteSettings,
@@ -49,6 +50,8 @@ export class SettingsService {
     private readonly userModel: Model<UserDocument>,
     @Inject(ConfigService)
     private readonly configService: ConfigService,
+    @Inject(StorageService)
+    private readonly storageService: StorageService,
   ) {}
 
   async getSettings(userId: string): Promise<SettingsResponse> {
@@ -88,7 +91,22 @@ export class SettingsService {
       setPayload['institute.address'] = dto.address.trim();
     if (dto.about !== undefined)
       setPayload['institute.about'] = dto.about.trim();
-    if (dto.logo !== undefined) setPayload['institute.logo'] = dto.logo;
+    if (dto.logo !== undefined) {
+      if (dto.logo && dto.logo.startsWith('data:')) {
+        try {
+          const uploaded = await this.storageService.uploadBase64(
+            dto.logo,
+            'logos',
+            'institute-logo',
+          );
+          setPayload['institute.logo'] = uploaded.url;
+        } catch {
+          setPayload['institute.logo'] = dto.logo;
+        }
+      } else {
+        setPayload['institute.logo'] = dto.logo;
+      }
+    }
 
     const updated = await this.settingsModel
       .findOneAndUpdate(

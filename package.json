@@ -6,7 +6,7 @@
   "private": true,
   "license": "UNLICENSED",
   "type": "module",
- "scripts": {
+  "scripts": {
     "build": "nest build",
     "deploy": "nest deploy",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
@@ -22,6 +22,7 @@
     "test:e2e": "vitest config ./vitest.config.e2e.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1175.0",
     "@nestjs/common": "^12.0.1",
     "@nestjs/config": "^12.1.1",
     "@nestjs/core": "^12.0.1",
@@ -48,6 +49,7 @@
     "@nestjs/testing": "^12.0.1",
     "@types/bcryptjs": "^3.0.0",
     "@types/express": "^5.0.0",
+    "@types/multer": "^2.3.0",
     "@types/node": "^24.0.0",
     "@types/supertest": "^7.0.0",
     "@vitest/coverage-v8": "^4.1.2",
