@@ -3,6 +3,7 @@ import { getModelToken } from '@nestjs/mongoose';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AttendanceStatus } from '../enums/status.enum.js';
+import { Transaction } from '../finance/schemas/transaction.schema.js';
 import { CourseModule } from '../modules/schemas/module.schema.js';
 import { Student } from '../students/schemas/student.schema.js';
 import { AttendanceService } from './attendance.service.js';
@@ -13,6 +14,7 @@ describe('AttendanceService', () => {
   let attendanceModel: Record<string, ReturnType<typeof vi.fn>>;
   let studentModel: Record<string, ReturnType<typeof vi.fn>>;
   let moduleModel: Record<string, ReturnType<typeof vi.fn>>;
+  let transactionModel: Record<string, ReturnType<typeof vi.fn>>;
 
   const mockQuery = (result: unknown) => ({
     lean: vi.fn().mockReturnThis(),
@@ -62,8 +64,12 @@ describe('AttendanceService', () => {
     };
 
     moduleModel = {
-      find: vi.fn(),
+      find: vi.fn().mockReturnValue(mockQuery([mockModule])),
       findOne: vi.fn(),
+    };
+
+    transactionModel = {
+      find: vi.fn().mockReturnValue(mockQuery([])),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -80,6 +86,10 @@ describe('AttendanceService', () => {
         {
           provide: getModelToken(CourseModule.name),
           useValue: moduleModel,
+        },
+        {
+          provide: getModelToken(Transaction.name),
+          useValue: transactionModel,
         },
       ],
     }).compile();
@@ -115,11 +125,18 @@ describe('AttendanceService', () => {
   });
 
   describe('verifyQr', () => {
-    it('verifies active student successfully without module check', async () => {
+    it('verifies active student successfully without module check and includes payment balance', async () => {
       studentModel.findOne.mockReturnValue(mockQuery(mockStudent));
+      moduleModel.find.mockReturnValue(mockQuery([mockModule]));
+      transactionModel.find.mockReturnValue(mockQuery([{ amount: 25000 }]));
+
       const res = await service.verifyQr({ code: 'EDUFLOW:ref_abc123' });
       expect(res.valid).toBe(true);
       expect(res.student.fullName).toBe('Nimal Perera');
+      expect(res.student.feeTotal).toBe(75000);
+      expect(res.student.paidTotal).toBe(25000);
+      expect(res.student.outstanding).toBe(50000);
+      expect(res.student.paymentStatus).toBe('partial');
     });
 
     it('throws BadRequestException if student is inactive', async () => {
