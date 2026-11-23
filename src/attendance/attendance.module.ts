@@ -1,6 +1,10 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import {
+  Transaction,
+  TransactionSchema,
+} from '../finance/schemas/transaction.schema.js';
+import {
   CourseModule,
   CourseModuleSchema,
 } from '../modules/schemas/module.schema.js';
@@ -21,6 +25,7 @@ import {
       { name: AttendanceRecord.name, schema: AttendanceRecordSchema },
       { name: Student.name, schema: StudentSchema },
       { name: CourseModule.name, schema: CourseModuleSchema },
+      { name: Transaction.name, schema: TransactionSchema },
     ]),
   ],
   controllers: [AttendanceController],
