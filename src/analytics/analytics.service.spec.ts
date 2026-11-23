@@ -151,7 +151,32 @@ describe('AnalyticsService', () => {
         { name: 'paid', value: 1 },
         { name: 'partial', value: 1 },
         { name: 'unpaid', value: 1 },
+        { name: 'unassigned', value: 0 },
       ]);
+    });
+
+    it('counts students with no module assigned as "unassigned", not unpaid', async () => {
+      studentModel.find.mockReturnValue(
+        createChain([
+          { id: 'STU-A', status: 'active', moduleIds: [], enrollmentDate: '2026-11-13' },
+          { id: 'STU-B', status: 'active', moduleIds: ['mod_mth'], enrollmentDate: '2026-11-13' },
+        ]),
+      );
+      moduleModel.find.mockReturnValue(createChain([{ id: 'mod_mth', fee: 10000 }]));
+      transactionModel.find
+        .mockReturnValueOnce(createChain([]))
+        .mockReturnValueOnce(createChain([]));
+      attendanceModel.find.mockReturnValue(createChain([]));
+
+      const res = await service.getOverview({ period: 'week' }, fixedNow);
+
+      expect(res.paymentStatusBreakdown).toEqual([
+        { name: 'paid', value: 0 },
+        { name: 'partial', value: 0 },
+        { name: 'unpaid', value: 1 }, // STU-B
+        { name: 'unassigned', value: 1 }, // STU-A has no module yet
+      ]);
+      expect(res.kpis.totalOutstanding).toBe(10000);
     });
   });
 

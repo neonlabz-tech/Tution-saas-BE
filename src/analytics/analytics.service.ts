@@ -64,7 +64,8 @@ export interface AttendanceSeriesBucket {
 }
 
 export interface PaymentStatusDonutItem {
-  name: 'paid' | 'partial' | 'unpaid';
+  /** unassigned = no module assigned yet, so no fee to pay */
+  name: 'paid' | 'partial' | 'unpaid' | 'unassigned';
   value: number;
 }
 
@@ -171,7 +172,9 @@ export class AnalyticsService {
       granularity,
     );
 
-    const studentFilter: Record<string, unknown> = {};
+    const studentFilter: Record<string, unknown> = {
+      enrollmentDate: { $lte: range.to },
+    };
     if (query.batch) studentFilter.batch = query.batch;
     if (query.moduleId) studentFilter.moduleIds = query.moduleId;
 
@@ -199,7 +202,11 @@ export class AnalyticsService {
         .lean()
         .exec(),
       this.transactionModel
-        .find({ type: TxType.INCOME, category: 'Tuition fees' })
+        .find({
+          type: TxType.INCOME,
+          category: 'Tuition fees',
+          date: { $gte: range.from, $lte: range.to },
+        })
         .select('studentId amount')
         .lean()
         .exec(),
@@ -240,10 +247,11 @@ export class AnalyticsService {
     let totalOutstanding = 0;
     let activeStudents = 0;
     let newEnrollments = 0;
-    const paymentStatusCounts: Record<'paid' | 'partial' | 'unpaid', number> = {
+    const paymentStatusCounts: Record<PaymentStatusDonutItem['name'], number> = {
       paid: 0,
       partial: 0,
       unpaid: 0,
+      unassigned: 0,
     };
 
     for (const student of students) {
@@ -264,7 +272,10 @@ export class AnalyticsService {
         const outstanding = Math.max(0, feeTotal - paidTotal);
         totalOutstanding += outstanding;
 
-        if (outstanding === 0 && (feeTotal > 0 || paidTotal > 0)) {
+        // No module assigned yet (e.g. new students) → own slice, not "unpaid".
+        if ((student.moduleIds ?? []).length === 0) {
+          paymentStatusCounts.unassigned += 1;
+        } else if (outstanding === 0) {
           paymentStatusCounts.paid += 1;
         } else if (paidTotal > 0 && outstanding > 0) {
           paymentStatusCounts.partial += 1;
@@ -307,6 +318,7 @@ export class AnalyticsService {
       { name: 'paid', value: paymentStatusCounts.paid },
       { name: 'partial', value: paymentStatusCounts.partial },
       { name: 'unpaid', value: paymentStatusCounts.unpaid },
+      { name: 'unassigned', value: paymentStatusCounts.unassigned },
     ];
 
     return {
@@ -350,6 +362,14 @@ export class AnalyticsService {
       attendanceFilter.date = { $gte: range.from, $lte: range.to };
     }
 
+    const tuitionFilter: Record<string, unknown> = {
+      type: TxType.INCOME,
+      category: 'Tuition fees',
+    };
+    if (range) {
+      tuitionFilter.date = { $gte: range.from, $lte: range.to };
+    }
+
     const [
       modules,
       allModulesForFees,
@@ -365,9 +385,13 @@ export class AnalyticsService {
         .exec(),
       this.moduleModel.find().select('id fee').lean().exec(),
       this.teacherModel.find().select('id fullName').lean().exec(),
-      this.studentModel.find().select('id moduleIds').lean().exec(),
+      this.studentModel
+        .find(range ? { enrollmentDate: { $lte: range.to } } : {})
+        .select('id moduleIds')
+        .lean()
+        .exec(),
       this.transactionModel
-        .find({ type: TxType.INCOME, category: 'Tuition fees' })
+        .find(tuitionFilter)
         .select('studentId amount')
         .lean()
         .exec(),
