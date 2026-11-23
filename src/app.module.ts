@@ -19,6 +19,7 @@ import { validateEnvironment } from './config/env.validation.js';
 import { MailModule } from './mail/mail.module.js';
 import { FinanceModule } from './finance/finance.module.js';
 import { ModulesModule } from './modules/modules.module.js';
+import { NoticesModule } from './notices/notices.module.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
 import { OnlineClassesModule } from './online-classes/online-classes.module.js';
 import { OverviewModule } from './overview/overview.module.js';
@@ -67,6 +68,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
     AuthModule,
     BatchesModule,
+    NoticesModule,
     NotificationsModule,
     OnlineClassesModule,
     OverviewModule,
