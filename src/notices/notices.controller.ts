@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -6,13 +7,20 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
+  MaxFileSizeValidator,
   Param,
+  ParseFilePipe,
   Patch,
   Post,
   Query,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
   ApiOperation,
   ApiParam,
   ApiResponse,
@@ -34,11 +42,21 @@ import {
 import { QueryNoticeDto } from './dto/query-notice.dto.js';
 import { UpdateNoticeDto } from './dto/update-notice.dto.js';
 import {
+  type AttachmentDownloadResult,
   type NoticeFindOptions,
   type NoticeListResult,
   type NoticeView,
   NoticesService,
+  type UploadedNoticeFile,
 } from './notices.service.js';
+
+const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+const ALLOWED_ATTACHMENT_MIME_TYPES = new Set([
+  'application/pdf',
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+]);
 
 const MANAGER_ROLES: Role[] = [Role.ADMIN, Role.SUPER_ADMIN];
 
@@ -124,5 +142,74 @@ export class NoticesController {
     @Param('id') id: string,
   ): Promise<{ deleted: true; id: string }> {
     return this.noticesService.delete(id);
+  }
+
+  @Post(':id/attachment')
+  @AllowedRoles(...MANAGER_ROLES)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: MAX_ATTACHMENT_BYTES },
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload a PDF or image attachment (max 5 MB, admin only)' })
+  @ApiParam(ID_PARAM)
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['file'],
+      properties: {
+        file: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Attachment uploaded', type: NoticeEnvelopeDto })
+  @ApiResponse(BAD_REQUEST)
+  @ApiResponse(FORBIDDEN)
+  @ApiResponse(NOT_FOUND)
+  async uploadAttachment(
+    @Param('id') id: string,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: MAX_ATTACHMENT_BYTES }),
+        ],
+      }),
+    )
+    file: UploadedNoticeFile,
+  ): Promise<NoticeView> {
+    if (!ALLOWED_ATTACHMENT_MIME_TYPES.has(file.mimetype)) {
+      throw new BadRequestException(
+        'Invalid file type. Allowed: application/pdf, image/png, image/jpeg, image/webp',
+      );
+    }
+    return this.noticesService.uploadAttachment(id, file);
+  }
+
+  @Get(':id/attachment')
+  @ApiOperation({
+    summary: 'Get a short-lived presigned download URL for a notice attachment',
+  })
+  @ApiParam(ID_PARAM)
+  @ApiResponse({ status: 200, description: 'Presigned download URL generated' })
+  @ApiResponse(NOT_FOUND)
+  @ApiResponse({ status: 410, description: 'Attachment expired' })
+  async getAttachment(
+    @Param('id') id: string,
+    @CurrentUser() user?: AuthenticatedUser,
+  ): Promise<AttachmentDownloadResult> {
+    return this.noticesService.getAttachmentDownload(id, viewOptions(user));
+  }
+
+  @Delete(':id/attachment')
+  @AllowedRoles(...MANAGER_ROLES)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Remove attachment from a notice (admin only)' })
+  @ApiParam(ID_PARAM)
+  @ApiResponse({ status: 200, description: 'Attachment deleted', type: NoticeEnvelopeDto })
+  @ApiResponse(FORBIDDEN)
+  @ApiResponse(NOT_FOUND)
+  async deleteAttachment(@Param('id') id: string): Promise<NoticeView> {
+    return this.noticesService.deleteAttachment(id);
   }
 }

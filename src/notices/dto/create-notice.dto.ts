@@ -4,6 +4,7 @@ import {
   ArrayUnique,
   IsArray,
   IsBoolean,
+  IsDateString,
   IsEnum,
   IsNotEmpty,
   IsOptional,
@@ -15,6 +16,7 @@ import {
 import { NoticePriority, NoticeStatus } from '../../enums/status.enum.js';
 
 export const ISO_DATE_REGEX = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
+export const HH_MM_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 const trim = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim() : value;
@@ -71,6 +73,20 @@ export class CreateNoticeDto {
   @IsString()
   @Matches(ISO_DATE_REGEX, { message: 'Expiry date must be in YYYY-MM-DD format' })
   expiryDate: string;
+
+  @ApiPropertyOptional({ example: '23:59', description: 'HH:mm expiry time (24h), defaults to 23:59' })
+  @IsOptional()
+  @IsString()
+  @Matches(HH_MM_REGEX, { message: 'Expiry time must be in HH:mm format (00:00 - 23:59)' })
+  expiryTime?: string;
+
+  @ApiPropertyOptional({
+    example: '2026-11-27T23:59:00.000Z',
+    description: 'ISO-8601 expiry timestamp; computed from expiryDate + expiryTime if omitted',
+  })
+  @IsOptional()
+  @IsDateString({}, { message: 'expiresAt must be a valid ISO-8601 timestamp' })
+  expiresAt?: string;
 
   @ApiPropertyOptional({ enum: NoticePriority, default: NoticePriority.MEDIUM })
   @IsOptional()
