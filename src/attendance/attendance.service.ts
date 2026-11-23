@@ -225,25 +225,57 @@ export class AttendanceService {
     const raw = code.trim();
     const clean = this.normalizeCode(code);
     if (!clean) {
-      throw new BadRequestException('Student ID or QR code cannot be empty');
+      throw new BadRequestException('Student name, ID, or QR code cannot be empty');
     }
 
-    const student = await this.studentModel
+    const escapedClean = this.escapeRegex(clean);
+    const escapedRaw = this.escapeRegex(raw);
+
+    // 1. Try exact matches first: ref, exact ID, phone, email, or exact full name
+    const exactStudent = await this.studentModel
       .findOne({
         $or: [
           { ref: clean },
-          { id: new RegExp(`^${this.escapeRegex(clean)}$`, 'i') },
-          { id: new RegExp(`^${this.escapeRegex(raw)}$`, 'i') },
+          { id: new RegExp(`^${escapedClean}$`, 'i') },
+          { id: new RegExp(`^${escapedRaw}$`, 'i') },
+          { phone: clean },
+          { email: clean.toLowerCase() },
+          { fullName: new RegExp(`^${escapedClean}$`, 'i') },
         ],
       })
       .lean<Student>()
       .exec();
 
-    if (!student) {
-      throw new NotFoundException('No student matches the provided ID or QR code');
+    if (exactStudent) {
+      return exactStudent;
     }
 
-    return student;
+    // 2. Partial name search requires at least 3 characters
+    if (clean.length < 3) {
+      throw new BadRequestException(
+        'Please enter at least 3 characters to search by student name, or enter the full Student ID (STU-...).',
+      );
+    }
+
+    // 3. For partial name search (>= 3 chars), search across students
+    const partialMatches = await this.studentModel
+      .find({ fullName: new RegExp(escapedClean, 'i') })
+      .limit(6)
+      .lean<Student[]>()
+      .exec();
+
+    if (partialMatches.length === 0) {
+      throw new NotFoundException('No student matches the provided name, ID, or QR code');
+    }
+
+    if (partialMatches.length > 1) {
+      const names = partialMatches.map((s) => `"${s.fullName}" (${s.id})`).join(', ');
+      throw new BadRequestException(
+        `Multiple students matched "${clean}": ${names}. Please type more characters or enter the exact Student ID.`,
+      );
+    }
+
+    return partialMatches[0];
   }
 
   async verifyQr(dto: VerifyQrDto): Promise<VerifyQrResponse> {

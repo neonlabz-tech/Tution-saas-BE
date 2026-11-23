@@ -10,6 +10,7 @@ import { AppService } from './app.service.js';
 import { AnalyticsModule } from './analytics/analytics.module.js';
 import { AttendanceModule } from './attendance/attendance.module.js';
 import { AuthModule } from './auth/auth.module.js';
+import { BatchesModule } from './batches/batches.module.js';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from './auth/guards/roles.guard.js';
 import { ResponseInterceptor } from './common/interceptors/index.js';
@@ -64,6 +65,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     }),
 
     AuthModule,
+    BatchesModule,
     NotificationsModule,
     OnlineClassesModule,
     OverviewModule,
