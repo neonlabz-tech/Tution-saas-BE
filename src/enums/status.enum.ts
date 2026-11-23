@@ -37,3 +37,11 @@ export enum NoticeStatus {
   PUBLISHED = 'published',
   DRAFT = 'draft',
 }
+
+/** Computed from status + publish/expiry dates; never stored. */
+export enum NoticeState {
+  DRAFT = 'draft',
+  SCHEDULED = 'scheduled',
+  ACTIVE = 'active',
+  EXPIRED = 'expired',
+}

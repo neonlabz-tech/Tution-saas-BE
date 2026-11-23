@@ -172,9 +172,14 @@ export interface OverviewActivityFeeds {
   upcomingClasses: UpcomingClassItem[];
   recentRegistrations: RecentRegistrationItem[];
   recentPayments: RecentPaymentItem[];
+  /** Top live notices (priority first), capped at ACTIVE_NOTICES_LIMIT. */
   activeNotices: ActiveNoticeItem[];
+  /** All live notices, so the UI can show "+N more". */
+  activeNoticesTotal: number;
   timeline: ActivityTimelineItem[];
 }
+
+export const ACTIVE_NOTICES_LIMIT = 3;
 
 export interface OverviewResponse {
   summary: OverviewSummary;
@@ -580,16 +585,21 @@ export class OverviewService {
       [NoticePriority.LOW]: 2,
     };
 
-    const activeNotices: ActiveNoticeItem[] = notices
-      .filter(
-        (n) => n.status === NoticeStatus.PUBLISHED && n.expiryDate >= today,
-      )
+    const liveNotices = notices.filter(
+      (n) =>
+        n.status === NoticeStatus.PUBLISHED &&
+        n.publishDate <= today &&
+        n.expiryDate >= today,
+    );
+    const activeNoticesTotal = liveNotices.length;
+
+    const activeNotices: ActiveNoticeItem[] = liveNotices
       .sort(
         (a, b) =>
           (priorityRank[a.priority] ?? 3) - (priorityRank[b.priority] ?? 3) ||
           b.publishDate.localeCompare(a.publishDate),
       )
-      .slice(0, 4)
+      .slice(0, ACTIVE_NOTICES_LIMIT)
       .map((n) => ({
         id: n.id || String(n._id ?? ''),
         title: n.title,
@@ -639,6 +649,7 @@ export class OverviewService {
       recentRegistrations,
       recentPayments,
       activeNotices,
+      activeNoticesTotal,
       timeline,
     };
   }

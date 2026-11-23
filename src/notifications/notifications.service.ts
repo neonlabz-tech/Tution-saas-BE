@@ -1,12 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import type { Model } from 'mongoose';
-import {
-  ClassStatus,
-  NoticePriority,
-  NoticeStatus,
-  TxType,
-} from '../enums/status.enum.js';
+import { ClassStatus, TxType } from '../enums/status.enum.js';
 import {
   Transaction,
   type TransactionDocument,
@@ -15,10 +10,6 @@ import {
   CourseModule,
   type CourseModuleDocument,
 } from '../modules/schemas/module.schema.js';
-import {
-  Notice,
-  type NoticeDocument,
-} from '../notices/schemas/notice.schema.js';
 import {
   OnlineClass,
   type OnlineClassDocument,
@@ -45,8 +36,6 @@ export interface NotificationItem {
   persisted: boolean;
 }
 
-type LeanNotice = Notice & { _id?: unknown };
-
 const pad = (n: number) => String(n).padStart(2, '0');
 
 function toISODate(d: Date): string {
@@ -64,8 +53,6 @@ export class NotificationsService {
   constructor(
     @InjectModel(Notification.name)
     private readonly notificationModel: Model<NotificationDocument>,
-    @InjectModel(Notice.name)
-    private readonly noticeModel: Model<NoticeDocument>,
     @InjectModel(OnlineClass.name)
     private readonly onlineClassModel: Model<OnlineClassDocument>,
     @InjectModel(Student.name)
@@ -84,9 +71,6 @@ export class NotificationsService {
   }> {
     const now = new Date();
     const today = toISODate(now);
-    const soon = new Date(now);
-    soon.setDate(soon.getDate() + 2);
-    const soonDate = toISODate(soon);
 
     const tenDaysAgo = new Date(now);
     tenDaysAgo.setDate(tenDaysAgo.getDate() - 10);
@@ -102,7 +86,6 @@ export class NotificationsService {
 
     const [
       persisted,
-      notices,
       classes,
       students,
       modules,
@@ -120,7 +103,6 @@ export class NotificationsService {
         .limit(50)
         .lean<Notification[]>()
         .exec(),
-      this.noticeModel.find().lean<LeanNotice[]>().exec(),
       this.onlineClassModel.find().lean<OnlineClass[]>().exec(),
       this.studentModel.find().lean<Student[]>().exec(),
       this.moduleModel.find().lean<CourseModule[]>().exec(),
@@ -152,62 +134,8 @@ export class NotificationsService {
         persisted: true,
       }));
 
-    const seenNoticeIds = new Set<string>();
-
-    notices
-      .filter(
-        (n) =>
-          n.status === NoticeStatus.PUBLISHED &&
-          n.expiryDate >= today &&
-          n.priority === NoticePriority.HIGH,
-      )
-      .slice(0, 2)
-      .forEach((n) => {
-        const nid = n.id || String(n._id ?? '');
-        const itemId = `ntc_${nid}`;
-        seenNoticeIds.add(nid);
-        items.push({
-          id: itemId,
-          type: 'notice',
-          title: n.title,
-          subtitle:
-            n.expiryDate === today
-              ? 'High priority · Expires today'
-              : 'High priority notice',
-          link: '/dashboard/notices',
-          read: readIds.has(itemId),
-          persisted: false,
-        });
-      });
-
-    if (prefs.notices) {
-      notices
-        .filter(
-          (n) =>
-            n.status === NoticeStatus.PUBLISHED &&
-            n.expiryDate >= today &&
-            n.expiryDate <= soonDate,
-        )
-        .slice(0, 3)
-        .forEach((n) => {
-          const nid = n.id || String(n._id ?? '');
-          if (seenNoticeIds.has(nid)) return;
-          seenNoticeIds.add(nid);
-          const itemId = `ntc_exp_${nid}`;
-          items.push({
-            id: itemId,
-            type: 'notice',
-            title: n.title,
-            subtitle:
-              n.expiryDate === today
-                ? 'Notice expires today'
-                : `Notice expires on ${n.expiryDate}`,
-            link: '/dashboard/notices',
-            read: readIds.has(itemId),
-            persisted: false,
-          });
-        });
-    }
+    // No notice alerts for admins: they create notices themselves.
+    // Student-facing notice notifications come with the student portal.
 
     if (prefs.classes) {
       classes
@@ -379,7 +307,7 @@ export class NotificationsService {
         ? 'payment'
         : id.startsWith('stu_')
           ? 'student'
-          : id.startsWith('ntc_') || id.startsWith('local_exp_')
+          : id.startsWith('ntc_')
             ? 'notice'
             : 'system';
 

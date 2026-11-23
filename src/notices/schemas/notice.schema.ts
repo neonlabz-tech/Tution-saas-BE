@@ -11,8 +11,9 @@ export type NoticeDocument = HydratedDocument<Notice>;
   autoIndex: false,
 })
 export class Notice {
-  @Prop({ trim: true })
-  id?: string;
+  /** Human-readable id, e.g. NTC-001. Generated from the `counters` collection. */
+  @Prop({ required: true, unique: true, index: true, trim: true })
+  id: string;
 
   @Prop({ required: true, trim: true })
   title: string;
@@ -20,12 +21,18 @@ export class Notice {
   @Prop({ default: '', trim: true })
   description: string;
 
-  @Prop({ type: [String], default: [] })
+  /** When true the notice targets every batch and `batches` is empty. */
+  @Prop({ type: Boolean, default: false, index: true })
+  allBatches: boolean;
+
+  @Prop({ type: [String], default: [], index: true })
   batches: string[];
 
-  @Prop({ required: true })
+  /** YYYY-MM-DD */
+  @Prop({ required: true, index: true })
   publishDate: string;
 
+  /** YYYY-MM-DD */
   @Prop({ required: true, index: true })
   expiryDate: string;
 

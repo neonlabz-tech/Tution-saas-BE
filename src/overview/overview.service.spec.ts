@@ -17,7 +17,7 @@ import { Notice } from '../notices/schemas/notice.schema.js';
 import { OnlineClass } from '../online-classes/schemas/online-class.schema.js';
 import { Student } from '../students/schemas/student.schema.js';
 import { Teacher } from '../teachers/schemas/teacher.schema.js';
-import { OverviewService } from './overview.service.js';
+import { ACTIVE_NOTICES_LIMIT, OverviewService } from './overview.service.js';
 
 function mockFind<T>(result: T) {
   return {
@@ -206,5 +206,42 @@ describe('OverviewService', () => {
       '6af437bb9b047f085077e95a',
     );
     expect(res.activityFeeds.timeline.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('active notices: top N (ACTIVE_NOTICES_LIMIT) by priority, total of all live ones, skips scheduled/draft/expired', async () => {
+    const shift = (days: number) => {
+      const d = new Date();
+      d.setDate(d.getDate() + days);
+      const pad = (n: number) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    };
+    const live = (id: string, priority: NoticePriority) => ({
+      id, title: id, description: '', batches: [], publishDate: today,
+      expiryDate: shift(5), priority, status: NoticeStatus.PUBLISHED,
+    });
+
+    for (const m of [studentModel, teacherModel, moduleModel, attendanceModel, transactionModel, onlineClassModel]) {
+      m.find.mockReturnValue(mockFind([]));
+    }
+    noticeModel.find.mockReturnValue(
+      mockFind([
+        live('H1', NoticePriority.HIGH),
+        live('H2', NoticePriority.HIGH),
+        live('H3', NoticePriority.HIGH),
+        live('H4', NoticePriority.HIGH),
+        live('M1', NoticePriority.MEDIUM),
+        live('L1', NoticePriority.LOW),
+        { ...live('SCHED', NoticePriority.HIGH), publishDate: shift(3) },
+        { ...live('DRAFT', NoticePriority.HIGH), status: NoticeStatus.DRAFT },
+        { ...live('OLD', NoticePriority.HIGH), publishDate: shift(-10), expiryDate: shift(-1) },
+      ]),
+    );
+
+    const { activityFeeds } = await service.getOverview();
+
+    expect(activityFeeds.activeNotices.map((n) => n.id)).toEqual(
+      ['H1', 'H2', 'H3', 'H4', 'M1', 'L1'].slice(0, ACTIVE_NOTICES_LIMIT),
+    );
+    expect(activityFeeds.activeNoticesTotal).toBe(6);
   });
 });
