@@ -6,7 +6,7 @@ import {
   IsString,
   Matches,
 } from 'class-validator';
-import { ClassStatus } from '../../enums/status.enum.js';
+import { ClassStatus, ClassType } from '../../enums/status.enum.js';
 
 export class CreateOnlineClassDto {
   @ApiProperty({
@@ -16,6 +16,23 @@ export class CreateOnlineClassDto {
   @IsString()
   @IsNotEmpty({ message: 'Title is required' })
   title: string;
+
+  @ApiPropertyOptional({
+    description: 'Type of class (online or physical)',
+    enum: ClassType,
+    default: ClassType.ONLINE,
+  })
+  @IsOptional()
+  @IsEnum(ClassType, { message: 'classType must be online or physical' })
+  classType?: ClassType;
+
+  @ApiPropertyOptional({
+    description: 'Hall or room name for physical class',
+    example: 'Hall A',
+  })
+  @IsOptional()
+  @IsString()
+  hall?: string;
 
   @ApiProperty({
     description: 'Course module ID',
@@ -63,13 +80,13 @@ export class CreateOnlineClassDto {
   })
   end: string;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     description: 'Live meeting link (Zoom, Google Meet, Teams, etc.)',
     example: 'https://meet.google.com/abc-defg-hij',
   })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty({ message: 'Meeting link is required' })
-  link: string;
+  link?: string;
 
   @ApiPropertyOptional({
     description: 'Optional class description or agenda',

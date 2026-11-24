@@ -1,6 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import type { HydratedDocument } from 'mongoose';
-import { ClassStatus } from '../../enums/status.enum.js';
+import { ClassStatus, ClassType } from '../../enums/status.enum.js';
 
 export type OnlineClassDocument = HydratedDocument<OnlineClass>;
 
@@ -17,6 +17,16 @@ export class OnlineClass {
   @Prop({ required: true, trim: true })
   title: string;
 
+  @Prop({
+    type: String,
+    enum: Object.values(ClassType),
+    default: ClassType.ONLINE,
+  })
+  classType: ClassType;
+
+  @Prop({ default: '', trim: true })
+  hall?: string;
+
   @Prop({ required: true, index: true })
   moduleId: string;
 
@@ -32,8 +42,8 @@ export class OnlineClass {
   @Prop({ required: true })
   end: string;
 
-  @Prop({ required: true, trim: true })
-  link: string;
+  @Prop({ default: '', trim: true })
+  link?: string;
 
   @Prop({ default: '', trim: true })
   description: string;

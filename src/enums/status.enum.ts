@@ -15,6 +15,11 @@ export enum ClassStatus {
   CANCELLED = 'cancelled',
 }
 
+export enum ClassType {
+  ONLINE = 'online',
+  PHYSICAL = 'physical',
+}
+
 export enum AttendanceStatus {
   PRESENT = 'present',
   ABSENT = 'absent',
