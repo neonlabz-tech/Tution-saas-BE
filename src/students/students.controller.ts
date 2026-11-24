@@ -152,6 +152,24 @@ export class StudentsController {
     return this.studentsService.create(body);
   }
 
+  @Post('bulk-batch')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Move multiple students to another batch' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['studentIds', 'targetBatch'],
+      properties: {
+        studentIds: { type: 'array', items: { type: 'string' } },
+        targetBatch: { type: 'string', example: 'Grade 7 - 2027' },
+      },
+    },
+  })
+  @ApiResponse({ status: 200, description: 'Students moved to new batch successfully' })
+  moveBatch(@Body() body: { studentIds: string[]; targetBatch: string }) {
+    return this.studentsService.moveStudentsToBatch(body.studentIds, body.targetBatch);
+  }
+
   @Patch(':id')
   @ApiOperation({ summary: 'Update student fields or status' })
   @ApiParam({ name: 'id', description: 'Student ID (STU-YYYY-NNN) or Mongo _id' })
