@@ -11,7 +11,7 @@ import {
   Notification,
   type NotificationDocument,
 } from '../notifications/schemas/notification.schema.js';
-import { ClassStatus } from '../enums/status.enum.js';
+import { ClassStatus, ClassType } from '../enums/status.enum.js';
 import { CreateOnlineClassDto } from './dto/create-online-class.dto.js';
 import { QueryOnlineClassDto } from './dto/query-online-class.dto.js';
 import { UpdateOnlineClassDto } from './dto/update-online-class.dto.js';
@@ -46,6 +46,9 @@ export class OnlineClassesService {
     if (query?.status) {
       filter.status = query.status;
     }
+    if (query?.classType && query.classType !== 'all') {
+      filter.classType = query.classType;
+    }
 
     if (query?.from || query?.to) {
       const startFilter: Record<string, string> = {};
@@ -61,7 +64,12 @@ export class OnlineClassesService {
     if (query?.q) {
       const q = query.q.trim();
       const regex = new RegExp(q, 'i');
-      filter.$or = [{ title: regex }, { batch: regex }, { link: regex }];
+      filter.$or = [
+        { title: regex },
+        { batch: regex },
+        { link: regex },
+        { hall: regex },
+      ];
     }
 
     return this.onlineClassModel
@@ -87,17 +95,27 @@ export class OnlineClassesService {
   async create(dto: CreateOnlineClassDto): Promise<OnlineClass> {
     this.validateStartEnd(dto.start, dto.end);
 
+    const classType = dto.classType ?? ClassType.ONLINE;
+    if (classType === ClassType.ONLINE && !dto.link?.trim()) {
+      throw new BadRequestException('Meeting link is required for online classes');
+    }
+    if (classType === ClassType.PHYSICAL && !dto.hall?.trim()) {
+      throw new BadRequestException('Hall name is required for physical classes');
+    }
+
     const id = `cls_${Date.now()}_${randomBytes(4).toString('hex')}`;
 
     const created = await this.onlineClassModel.create({
       id,
       title: dto.title.trim(),
+      classType,
+      hall: dto.hall?.trim() ?? '',
       moduleId: dto.moduleId.trim(),
       teacherId: dto.teacherId.trim(),
       batch: dto.batch.trim(),
       start: dto.start.trim(),
       end: dto.end.trim(),
-      link: dto.link.trim(),
+      link: dto.link?.trim() ?? '',
       description: dto.description?.trim() ?? '',
       status: dto.status ?? ClassStatus.SCHEDULED,
     });
@@ -111,11 +129,16 @@ export class OnlineClassesService {
     try {
       if (typeof this.notificationModel?.create === 'function') {
         const notifId = `notif_cls_${Date.now()}_${randomBytes(3).toString('hex')}`;
+        const locSub =
+          saved.classType === ClassType.PHYSICAL && saved.hall
+            ? `${saved.batch} · ${saved.hall} · ${saved.start.replace('T', ' ')}`
+            : `${saved.batch} · ${saved.start.replace('T', ' ')}`;
+
         await this.notificationModel.create({
           id: notifId,
           type: 'class',
           title: `Class Scheduled: ${saved.title}`,
-          subtitle: `${saved.batch} · ${saved.start.replace('T', ' ')}`,
+          subtitle: locSub,
           link: '/dashboard/online-classes',
           read: false,
         });
@@ -137,7 +160,19 @@ export class OnlineClassesService {
     const nextEnd = dto.end ?? existing.end;
     this.validateStartEnd(nextStart, nextEnd);
 
+    // Protection: Prevent rescheduling classes that have already ended
+    const now = new Date().toISOString();
+    const isRescheduling = dto.start !== undefined || dto.end !== undefined;
+    if (isRescheduling && existing.end < now) {
+      throw new BadRequestException('Cannot reschedule a class that has already ended');
+    }
+    if (dto.end !== undefined && dto.end < now) {
+      throw new BadRequestException('Cannot move class to a past time');
+    }
+
     if (dto.title !== undefined) existing.title = dto.title.trim();
+    if (dto.classType !== undefined) existing.classType = dto.classType;
+    if (dto.hall !== undefined) existing.hall = dto.hall.trim();
     if (dto.moduleId !== undefined) existing.moduleId = dto.moduleId.trim();
     if (dto.teacherId !== undefined) existing.teacherId = dto.teacherId.trim();
     if (dto.batch !== undefined) existing.batch = dto.batch.trim();

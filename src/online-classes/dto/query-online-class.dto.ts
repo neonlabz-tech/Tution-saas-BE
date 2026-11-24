@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsEnum, IsOptional, IsString } from 'class-validator';
-import { ClassStatus } from '../../enums/status.enum.js';
+import { ClassStatus, ClassType } from '../../enums/status.enum.js';
 
 export class QueryOnlineClassDto {
   @ApiPropertyOptional({ description: 'Filter by teacher ID' })
@@ -17,6 +17,11 @@ export class QueryOnlineClassDto {
   @IsOptional()
   @IsString()
   batch?: string;
+
+  @ApiPropertyOptional({ description: 'Filter by class type (online or physical)', enum: ClassType })
+  @IsOptional()
+  @IsString()
+  classType?: string;
 
   @ApiPropertyOptional({ description: 'Filter by status', enum: ClassStatus })
   @IsOptional()

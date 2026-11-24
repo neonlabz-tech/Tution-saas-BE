@@ -5,7 +5,7 @@ import {
   IsString,
   Matches,
 } from 'class-validator';
-import { ClassStatus } from '../../enums/status.enum.js';
+import { ClassStatus, ClassType } from '../../enums/status.enum.js';
 
 export class UpdateOnlineClassDto {
   @ApiPropertyOptional({
@@ -15,6 +15,22 @@ export class UpdateOnlineClassDto {
   @IsOptional()
   @IsString()
   title?: string;
+
+  @ApiPropertyOptional({
+    description: 'Type of class (online or physical)',
+    enum: ClassType,
+  })
+  @IsOptional()
+  @IsEnum(ClassType, { message: 'classType must be online or physical' })
+  classType?: ClassType;
+
+  @ApiPropertyOptional({
+    description: 'Hall or room name for physical class',
+    example: 'Hall A',
+  })
+  @IsOptional()
+  @IsString()
+  hall?: string;
 
   @ApiPropertyOptional({
     description: 'Course module ID',

@@ -2,7 +2,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { getModelToken } from '@nestjs/mongoose';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ClassStatus } from '../enums/status.enum.js';
+import { ClassStatus, ClassType } from '../enums/status.enum.js';
 import { Notification } from '../notifications/schemas/notification.schema.js';
 import { OnlineClassesService } from './online-classes.service.js';
 import { OnlineClass } from './schemas/online-class.schema.js';
@@ -22,11 +22,13 @@ describe('OnlineClassesService', () => {
   const sampleClass: OnlineClass = {
     id: 'cls_1',
     title: 'Pure Maths — Integration',
+    classType: ClassType.ONLINE,
+    hall: '',
     moduleId: 'mod_mth',
     teacherId: 'tea_1',
     batch: '2025-A Morning',
-    start: '2026-11-20T09:00',
-    end: '2026-11-20T10:30',
+    start: '2099-11-20T09:00',
+    end: '2099-11-20T10:30',
     link: 'https://meet.google.com/abc-defg-hij',
     description: 'Calculus and integration methods',
     status: ClassStatus.SCHEDULED,
@@ -158,6 +160,31 @@ describe('OnlineClassesService', () => {
       );
     });
 
+    it('schedules a physical class with hall and without meeting link', async () => {
+      const dto = {
+        title: 'Biology — Practical Lab',
+        classType: ClassType.PHYSICAL,
+        hall: 'Lab 2',
+        moduleId: 'mod_bio',
+        teacherId: 'tea_3',
+        batch: '2025-A Morning',
+        start: '2026-11-22T10:00',
+        end: '2026-11-22T12:00',
+      };
+
+      const res = await service.create(dto);
+      expect(res.id).toMatch(/^cls_\d+_/);
+      expect(res.classType).toBe('physical');
+      expect(res.hall).toBe('Lab 2');
+      expect(notificationModel.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'class',
+          title: expect.stringContaining('Class Scheduled: Biology'),
+          subtitle: expect.stringContaining('Lab 2'),
+        }),
+      );
+    });
+
     it('throws BadRequestException when start time is on or after end time', async () => {
       const dto = {
         title: 'Chemistry Lab Session',
@@ -191,13 +218,33 @@ describe('OnlineClassesService', () => {
 
       const updated = await service.update('cls_1', {
         title: 'Pure Maths — Advanced Integration',
-        start: '2026-11-20T10:00',
-        end: '2026-11-20T11:30',
+        start: '2099-11-20T10:00',
+        end: '2099-11-20T11:30',
       });
 
       expect(updated.title).toBe('Pure Maths — Advanced Integration');
-      expect(updated.start).toBe('2026-11-20T10:00');
+      expect(updated.start).toBe('2099-11-20T10:00');
       expect(mockDoc.save).toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when attempting to reschedule a past class', async () => {
+      const pastDoc = {
+        ...sampleClass,
+        start: '2020-01-01T09:00',
+        end: '2020-01-01T10:00',
+        save: vi.fn(),
+      };
+
+      onlineClassModel.findOne.mockReturnValue({
+        exec: vi.fn().mockResolvedValue(pastDoc),
+      });
+
+      await expect(
+        service.update('cls_1', {
+          start: '2099-11-20T12:00',
+          end: '2099-11-20T13:00',
+        }),
+      ).rejects.toThrow('Cannot reschedule a class that has already ended');
     });
 
     it('throws BadRequestException when rescheduling with start >= end', async () => {
@@ -212,8 +259,8 @@ describe('OnlineClassesService', () => {
 
       await expect(
         service.update('cls_1', {
-          start: '2026-11-20T12:00',
-          end: '2026-11-20T11:00',
+          start: '2099-11-20T12:00',
+          end: '2099-11-20T11:00',
         }),
       ).rejects.toThrow(BadRequestException);
     });
