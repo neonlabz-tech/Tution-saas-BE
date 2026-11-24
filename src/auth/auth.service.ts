@@ -296,7 +296,7 @@ export class AuthService implements OnModuleInit {
     await user.save();
 
     const cfg = getAuthConfig(this.configService);
-    const resetUrl = `${cfg.frontendUrl}/#/reset-password?token=${token}`;
+    const resetUrl = `${cfg.frontendUrl}/reset-password?token=${token}`;
 
     await this.mailService.sendPasswordResetEmail({
       to: user.email,
@@ -307,7 +307,7 @@ export class AuthService implements OnModuleInit {
     return {
       message:
         'If an administrator account with that email exists, a password reset link has been sent.',
-      ...(process.env.NODE_ENV !== 'production' && !cfg.resendApiKey
+      ...(process.env.NODE_ENV !== 'production'
         ? { devResetUrl: resetUrl }
         : {}),
     };

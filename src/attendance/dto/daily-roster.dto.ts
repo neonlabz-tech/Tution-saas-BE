@@ -43,4 +43,12 @@ export class DailyRosterQueryDto {
   @IsOptional()
   @IsString()
   q?: string;
+
+  @ApiPropertyOptional({
+    description: 'Search filter alias for q',
+    example: 'Nimal',
+  })
+  @IsOptional()
+  @IsString()
+  search?: string;
 }
