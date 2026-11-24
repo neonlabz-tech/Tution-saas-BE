@@ -31,6 +31,24 @@ export class NoticeResponseDto {
   @ApiProperty({ example: '2026-11-27' })
   expiryDate: string;
 
+  @ApiPropertyOptional({ example: '23:59' })
+  expiryTime?: string;
+
+  @ApiPropertyOptional({ example: '2026-11-27T23:59:00.000Z' })
+  expiresAt?: Date;
+
+  @ApiPropertyOptional({ nullable: true, default: null })
+  attachment?: {
+    key: string;
+    fileName: string;
+    mimeType: string;
+    size: number;
+    uploadedAt: Date;
+  } | null;
+
+  @ApiPropertyOptional({ example: false })
+  attachmentExpired?: boolean;
+
   @ApiProperty({ enum: NoticePriority, example: NoticePriority.HIGH })
   priority: NoticePriority;
 

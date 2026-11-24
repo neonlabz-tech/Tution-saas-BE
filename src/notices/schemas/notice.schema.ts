@@ -4,6 +4,27 @@ import { NoticePriority, NoticeStatus } from '../../enums/status.enum.js';
 
 export type NoticeDocument = HydratedDocument<Notice>;
 
+@Schema({ _id: false })
+export class NoticeAttachment {
+  @Prop({ required: true })
+  key: string;
+
+  @Prop({ required: true })
+  fileName: string;
+
+  @Prop({ required: true })
+  mimeType: string;
+
+  @Prop({ required: true })
+  size: number;
+
+  @Prop({ type: Date, required: true })
+  uploadedAt: Date;
+}
+
+export const NoticeAttachmentSchema =
+  SchemaFactory.createForClass(NoticeAttachment);
+
 @Schema({
   timestamps: true,
   collection: 'notices',
@@ -35,6 +56,20 @@ export class Notice {
   /** YYYY-MM-DD */
   @Prop({ required: true, index: true })
   expiryDate: string;
+
+  /** HH:mm, defaults to 23:59 */
+  @Prop({ type: String, default: '23:59' })
+  expiryTime?: string;
+
+  /** Exact ISO-8601 expiry timestamp computed from expiryDate + expiryTime */
+  @Prop({ type: Date, index: true })
+  expiresAt?: Date;
+
+  @Prop({ type: NoticeAttachmentSchema, default: null })
+  attachment?: NoticeAttachment | null;
+
+  @Prop({ type: Boolean, default: false })
+  attachmentExpired?: boolean;
 
   @Prop({
     type: String,
