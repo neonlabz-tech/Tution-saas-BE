@@ -24,6 +24,7 @@ import {
   CurrentUser,
 } from '../decorators/current-user.decorator.js';
 import { AllowedRoles } from '../decorators/roles.decorator.js';
+import { Public } from '../decorators/public.decorator.js';
 import { Role } from '../enums/role.enum.js';
 import {
   FINANCE_PERIODS,
@@ -50,12 +51,12 @@ import { PAYMENT_STATUSES } from './schemas/payment.schema.js';
 
 @ApiTags('Payments')
 @ApiBearerAuth('access-token')
-@AllowedRoles(Role.ADMIN, Role.SUPER_ADMIN)
 @Controller('payments')
 export class PaymentsController {
   constructor(private readonly paymentsService: PaymentsService) {}
 
   @Get('students')
+  @AllowedRoles(Role.ADMIN, Role.SUPER_ADMIN)
   @ApiOperation({
     summary: 'List students with live fee totals, paid totals, and balances',
   })
@@ -79,6 +80,7 @@ export class PaymentsController {
     return this.paymentsService.getStudentPayments(query);
   }
 
+  @Public()
   @Get()
   @ApiOperation({
     summary: 'List payments with filtering, pagination, and enriched student details',
@@ -104,6 +106,7 @@ export class PaymentsController {
     return this.paymentsService.listPayments(query);
   }
 
+  @Public()
   @Get(':id')
   @ApiOperation({
     summary: 'Get payment details by ID, receiptNo, or MongoDB _id',
@@ -116,6 +119,7 @@ export class PaymentsController {
   }
 
   @Post()
+  @AllowedRoles(Role.ADMIN, Role.SUPER_ADMIN)
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
     summary: 'Create a student payment and auto-sync a Finance income transaction',
@@ -151,6 +155,7 @@ export class PaymentsController {
   }
 
   @Patch(':id')
+  @AllowedRoles(Role.ADMIN, Role.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Update a payment and sync changes to its linked Finance transaction',
   })
@@ -179,6 +184,7 @@ export class PaymentsController {
   }
 
   @Delete(':id')
+  @AllowedRoles(Role.ADMIN, Role.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Delete a payment and its linked Finance transaction',
   })
