@@ -121,13 +121,15 @@ export interface OverviewTrends {
 export interface UpcomingClassItem {
   id: string;
   title: string;
+  classType?: string;
+  hall?: string;
   moduleId: string;
   teacherId: string;
   teacherName: string;
   batch: string;
   start: string;
   end: string;
-  link: string;
+  link?: string;
   status: ClassStatus;
 }
 
@@ -539,13 +541,15 @@ export class OverviewService {
       .map((c) => ({
         id: c.id,
         title: c.title,
+        classType: c.classType,
+        hall: c.hall,
         moduleId: c.moduleId,
         teacherId: c.teacherId,
         teacherName: teacherNameById.get(c.teacherId) ?? 'Unassigned',
         batch: c.batch,
         start: c.start,
         end: c.end,
-        link: c.link,
+        link: c.link ?? '',
         status: c.status,
       }));
 

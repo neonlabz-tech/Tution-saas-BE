@@ -739,6 +739,36 @@ export class StudentsService {
     };
   }
 
+  async moveStudentsToBatch(
+    studentIds: string[],
+    targetBatch: string,
+  ): Promise<{ success: boolean; updatedCount: number; targetBatch: string }> {
+    const cleanIds = (studentIds || []).filter(Boolean);
+    const cleanBatch = (targetBatch || '').trim();
+
+    if (cleanIds.length === 0 || !cleanBatch) {
+      throw new BadRequestException('Student IDs and target batch are required');
+    }
+
+    const orClauses: Array<Record<string, unknown>> = [{ id: { $in: cleanIds } }];
+    const validObjectIds = cleanIds
+      .filter((id) => Types.ObjectId.isValid(id))
+      .map((id) => new Types.ObjectId(id));
+    if (validObjectIds.length > 0) {
+      orClauses.push({ _id: { $in: validObjectIds } });
+    }
+
+    const res = await this.studentModel
+      .updateMany({ $or: orClauses }, { $set: { batch: cleanBatch } })
+      .exec();
+
+    return {
+      success: true,
+      updatedCount: res.modifiedCount,
+      targetBatch: cleanBatch,
+    };
+  }
+
   private escapeRegex(value: string): string {
     return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }

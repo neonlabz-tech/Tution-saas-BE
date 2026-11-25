@@ -280,7 +280,7 @@ describe('AuthService', () => {
         expect.objectContaining({
           to: 'admin@brightfuture.lk',
           fullName: 'Admin User',
-          resetUrl: expect.stringContaining('#/reset-password?token='),
+          resetUrl: expect.stringContaining('/reset-password?token='),
         }),
       );
     });

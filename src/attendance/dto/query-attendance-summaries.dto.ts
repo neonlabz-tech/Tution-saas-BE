@@ -53,4 +53,12 @@ export class QueryAttendanceSummariesDto {
   @IsOptional()
   @IsString()
   q?: string;
+
+  @ApiPropertyOptional({
+    description: 'Search alias for q',
+    example: 'Nimal',
+  })
+  @IsOptional()
+  @IsString()
+  search?: string;
 }

@@ -1,4 +1,8 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  GoneException,
+  NotFoundException,
+} from '@nestjs/common';
 import { getModelToken } from '@nestjs/mongoose';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -13,6 +17,7 @@ import {
   NoticesService,
   todayISO,
 } from './notices.service.js';
+import { R2StorageService } from './r2-storage.service.js';
 import { Notice } from './schemas/notice.schema.js';
 
 const TODAY = '2026-11-20';
@@ -27,6 +32,7 @@ describe('NoticesService', () => {
   let service: NoticesService;
   let noticeModel: Record<string, ReturnType<typeof vi.fn>>;
   let counterModel: { findOneAndUpdate: ReturnType<typeof vi.fn> };
+  let r2Storage: Record<string, ReturnType<typeof vi.fn>>;
 
   const sample: Notice = {
     id: 'NTC-001',
@@ -65,12 +71,20 @@ describe('NoticesService', () => {
     counterModel = {
       findOneAndUpdate: vi.fn().mockReturnValue(chain({ _id: 'notice', seq: 7 })),
     };
+    r2Storage = {
+      uploadObject: vi.fn().mockResolvedValue(undefined),
+      deleteObject: vi.fn().mockResolvedValue(undefined),
+      getPresignedDownloadUrl: vi
+        .fn()
+        .mockResolvedValue('https://r2.example.com/signed-url'),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         NoticesService,
         { provide: getModelToken(Notice.name), useValue: noticeModel },
         { provide: getModelToken(Counter.name), useValue: counterModel },
+        { provide: R2StorageService, useValue: r2Storage },
       ],
     }).compile();
 
@@ -131,7 +145,11 @@ describe('NoticesService', () => {
         {
           status: NoticeStatus.PUBLISHED,
           publishDate: { $lte: TODAY },
-          expiryDate: { $gte: TODAY },
+          $or: [
+            { expiresAt: { $gt: new Date(2026, 10, 20, 9, 0, 0) } },
+            { expiresAt: { $exists: false }, expiryDate: { $gte: TODAY } },
+            { expiresAt: null, expiryDate: { $gte: TODAY } },
+          ],
         },
       ]);
     });
@@ -142,7 +160,15 @@ describe('NoticesService', () => {
       const res = await service.findAll({ state: NoticeState.DRAFT }, { activeOnly: true });
 
       expect(noticeModel.find.mock.calls[0][0].$and).toEqual([
-        { status: NoticeStatus.PUBLISHED, publishDate: { $lte: TODAY }, expiryDate: { $gte: TODAY } },
+        {
+          status: NoticeStatus.PUBLISHED,
+          publishDate: { $lte: TODAY },
+          $or: [
+            { expiresAt: { $gt: new Date(2026, 10, 20, 9, 0, 0) } },
+            { expiresAt: { $exists: false }, expiryDate: { $gte: TODAY } },
+            { expiresAt: null, expiryDate: { $gte: TODAY } },
+          ],
+        },
       ]);
       expect(res.counts).toEqual({ all: 1, draft: 0, scheduled: 0, active: 1 });
     });
@@ -291,15 +317,163 @@ describe('NoticesService', () => {
   });
 
   describe('delete', () => {
-    it('hard deletes the notice', async () => {
+    it('hard deletes the notice and deletes R2 attachment if present', async () => {
+      noticeModel.findOne.mockReturnValue(
+        chain({
+          ...sample,
+          attachment: {
+            key: 'notices/NTC-001/uuid-timetable.pdf',
+            fileName: 'timetable.pdf',
+            mimeType: 'application/pdf',
+            size: 1024,
+            uploadedAt: new Date(),
+          },
+        }),
+      );
       noticeModel.deleteOne.mockReturnValue({ exec: vi.fn().mockResolvedValue({ deletedCount: 1 }) });
       await expect(service.delete('NTC-001')).resolves.toEqual({ deleted: true, id: 'NTC-001' });
+      expect(r2Storage.deleteObject).toHaveBeenCalledWith('notices/NTC-001/uuid-timetable.pdf');
       expect(noticeModel.deleteOne).toHaveBeenCalledWith({ id: 'NTC-001' });
     });
 
-    it('throws 404 when nothing deleted', async () => {
-      noticeModel.deleteOne.mockReturnValue({ exec: vi.fn().mockResolvedValue({ deletedCount: 0 }) });
+    it('throws 404 when notice does not exist', async () => {
+      noticeModel.findOne.mockReturnValue(chain(null));
       await expect(service.delete('NTC-404')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('attachments & exact expiry', () => {
+    it('computes EXPIRED once exact expiresAt timestamp is reached', () => {
+      const notice = {
+        status: NoticeStatus.PUBLISHED,
+        publishDate: '2026-11-20',
+        expiryDate: '2026-11-20',
+        expiryTime: '09:00',
+        expiresAt: new Date(2026, 10, 20, 9, 0, 0),
+      };
+      expect(computeNoticeState(notice, new Date(2026, 10, 20, 8, 59, 59))).toBe(NoticeState.ACTIVE);
+      expect(computeNoticeState(notice, new Date(2026, 10, 20, 9, 0, 0))).toBe(NoticeState.EXPIRED);
+    });
+
+    it('uploads attachment to R2, replaces old key, and saves metadata', async () => {
+      const doc = {
+        ...sample,
+        expiresAt: new Date(2026, 10, 25, 23, 59, 0),
+        attachment: {
+          key: 'notices/NTC-001/old.pdf',
+          fileName: 'old.pdf',
+          mimeType: 'application/pdf',
+          size: 500,
+          uploadedAt: new Date(),
+        },
+        attachmentExpired: false,
+        save: vi.fn().mockImplementation(async function (this: Record<string, unknown>) {
+          return { toObject: () => ({ ...this }) };
+        }),
+      };
+      noticeModel.findOne.mockReturnValue({ exec: vi.fn().mockResolvedValue(doc) });
+
+      const res = await service.uploadAttachment('NTC-001', {
+        originalname: 'Exam Timetable.pdf',
+        mimetype: 'application/pdf',
+        size: 2048,
+        buffer: Buffer.from('%PDF-1.4'),
+      });
+
+      expect(r2Storage.deleteObject).toHaveBeenCalledWith('notices/NTC-001/old.pdf');
+      expect(r2Storage.uploadObject).toHaveBeenCalledWith(
+        expect.stringMatching(/^notices\/NTC-001\/.+-Exam_Timetable\.pdf$/),
+        expect.any(Buffer),
+        'application/pdf',
+      );
+      expect(res.attachment?.fileName).toBe('Exam Timetable.pdf');
+      expect(res.attachmentExpired).toBe(false);
+    });
+
+    it('rejects attachment upload with 400 when notice is already expired', async () => {
+      noticeModel.findOne.mockReturnValue({
+        exec: vi.fn().mockResolvedValue({
+          ...sample,
+          expiryDate: '2026-11-20',
+          expiresAt: new Date(2026, 10, 20, 8, 0, 0),
+        }),
+      });
+
+      await expect(
+        service.uploadAttachment('NTC-001', {
+          originalname: 'file.pdf',
+          mimetype: 'application/pdf',
+          size: 100,
+          buffer: Buffer.from('pdf'),
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('returns presigned URL for valid attachment and 410 Gone after expiry', async () => {
+      const activeDoc = {
+        ...sample,
+        expiresAt: new Date(2026, 10, 25, 23, 59, 0),
+        attachment: {
+          key: 'notices/NTC-001/tt.pdf',
+          fileName: 'tt.pdf',
+          mimeType: 'application/pdf',
+          size: 100,
+          uploadedAt: new Date(),
+        },
+        attachmentExpired: false,
+      };
+      noticeModel.findOne.mockReturnValue({ exec: vi.fn().mockResolvedValue(activeDoc) });
+
+      const res = await service.getAttachmentDownload('NTC-001', { activeOnly: true });
+      expect(res).toEqual({
+        url: 'https://r2.example.com/signed-url',
+        fileName: 'tt.pdf',
+      });
+      expect(r2Storage.getPresignedDownloadUrl).toHaveBeenCalledWith(
+        'notices/NTC-001/tt.pdf',
+        'tt.pdf',
+        60,
+      );
+
+      const expiredDoc = {
+        ...activeDoc,
+        expiresAt: new Date(2026, 10, 20, 8, 0, 0),
+        save: vi.fn().mockResolvedValue(undefined),
+      };
+      noticeModel.findOne.mockReturnValue({ exec: vi.fn().mockResolvedValue(expiredDoc) });
+
+      await expect(
+        service.getAttachmentDownload('NTC-001', { activeOnly: true }),
+      ).rejects.toThrow(GoneException);
+      expect(r2Storage.deleteObject).toHaveBeenCalledWith('notices/NTC-001/tt.pdf');
+      expect(expiredDoc.attachment).toBeNull();
+      expect(expiredDoc.attachmentExpired).toBe(true);
+    });
+
+    it('cron cleanup removes expired attachments from R2 and marks attachmentExpired=true', async () => {
+      noticeModel.find.mockReturnValue({
+        select: vi.fn().mockReturnThis(),
+        lean: vi.fn().mockReturnThis(),
+        exec: vi.fn().mockResolvedValue([
+          {
+            _id: 'mongo-id-1',
+            id: 'NTC-001',
+            attachment: { key: 'notices/NTC-001/a.pdf' },
+          },
+        ]),
+      });
+      noticeModel.updateOne = vi.fn().mockReturnValue({
+        exec: vi.fn().mockResolvedValue({ modifiedCount: 1 }),
+      });
+
+      const cleaned = await service.cleanupExpiredAttachments();
+
+      expect(cleaned).toBe(1);
+      expect(r2Storage.deleteObject).toHaveBeenCalledWith('notices/NTC-001/a.pdf');
+      expect(noticeModel.updateOne).toHaveBeenCalledWith(
+        { _id: 'mongo-id-1' },
+        { $set: { attachment: null, attachmentExpired: true } },
+      );
     });
   });
 });

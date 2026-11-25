@@ -244,4 +244,47 @@ describe('OverviewService', () => {
     );
     expect(activityFeeds.activeNoticesTotal).toBe(6);
   });
+
+  it('supports upcoming physical classes with hall info alongside online classes', async () => {
+    const futureDate = '2099-12-31';
+    for (const m of [studentModel, teacherModel, moduleModel, attendanceModel, transactionModel, noticeModel]) {
+      m.find.mockReturnValue(mockFind([]));
+    }
+    onlineClassModel.find.mockReturnValue(
+      mockFind([
+        {
+          id: 'cls_physical',
+          title: 'Chemistry Lab in Hall 2',
+          moduleId: 'mod_chem',
+          teacherId: 'TCH-002',
+          batch: '2025-A Morning',
+          classType: 'physical',
+          hall: 'Hall 2B',
+          start: `${futureDate}T09:00`,
+          end: `${futureDate}T11:00`,
+          status: ClassStatus.SCHEDULED,
+        },
+        {
+          id: 'cls_online',
+          title: 'Physics Zoom',
+          moduleId: 'mod_phy',
+          teacherId: 'TCH-003',
+          batch: '2025-A Morning',
+          classType: 'online',
+          link: 'https://zoom.us/j/12345',
+          start: `${futureDate}T13:00`,
+          end: `${futureDate}T15:00`,
+          status: ClassStatus.SCHEDULED,
+        },
+      ]),
+    );
+
+    const { activityFeeds } = await service.getOverview();
+    expect(activityFeeds.upcomingClasses).toHaveLength(2);
+    expect(activityFeeds.upcomingClasses[0].classType).toBe('physical');
+    expect(activityFeeds.upcomingClasses[0].hall).toBe('Hall 2B');
+    expect(activityFeeds.upcomingClasses[0].link).toBe('');
+    expect(activityFeeds.upcomingClasses[1].classType).toBe('online');
+    expect(activityFeeds.upcomingClasses[1].link).toBe('https://zoom.us/j/12345');
+  });
 });

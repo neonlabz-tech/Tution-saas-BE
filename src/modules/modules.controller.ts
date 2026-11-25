@@ -21,6 +21,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { AllowedRoles } from '../decorators/roles.decorator.js';
+import { Public } from '../decorators/public.decorator.js';
 import { Role } from '../enums/role.enum.js';
 import {
   createModuleSchema,
@@ -42,11 +43,11 @@ import { ModulesService } from './modules.service.js';
 
 @ApiTags('Modules')
 @ApiBearerAuth('access-token')
-@AllowedRoles(Role.ADMIN, Role.SUPER_ADMIN)
 @Controller('modules')
 export class ModulesController {
   constructor(private readonly modulesService: ModulesService) {}
 
+  @Public()
   @Get()
   @ApiOperation({
     summary: 'Fetch all modules with search, filters, teacher and enrolled counts',
@@ -64,6 +65,7 @@ export class ModulesController {
     return this.modulesService.findAll(query);
   }
 
+  @Public()
   @Get(':id')
   @ApiOperation({
     summary: 'Fetch module details by module ID or database ID',
@@ -76,6 +78,7 @@ export class ModulesController {
   }
 
   @Post()
+  @AllowedRoles(Role.ADMIN, Role.SUPER_ADMIN)
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a new course module' })
   @ApiBody({
@@ -114,6 +117,7 @@ export class ModulesController {
   }
 
   @Patch(':id')
+  @AllowedRoles(Role.ADMIN, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'Update module fields or teacher assignment' })
   @ApiParam({ name: 'id', description: 'Module ID or Mongo _id' })
   @ApiBody({
@@ -150,6 +154,7 @@ export class ModulesController {
   }
 
   @Put(':id/enrollments')
+  @AllowedRoles(Role.ADMIN, Role.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Sync student enrollments for a module (adds/removes students)',
   })
@@ -178,6 +183,7 @@ export class ModulesController {
   }
 
   @Delete(':id')
+  @AllowedRoles(Role.ADMIN, Role.SUPER_ADMIN)
   @ApiOperation({
     summary:
       'Delete module and cascade to student enrollments, online classes, and attendance records',

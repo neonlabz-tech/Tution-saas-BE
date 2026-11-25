@@ -4,12 +4,14 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { MongooseModule } from '@nestjs/mongoose';
+import { ScheduleModule } from '@nestjs/schedule';
 import { createObserveModule } from '@nestjs/observe';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { AnalyticsModule } from './analytics/analytics.module.js';
 import { AttendanceModule } from './attendance/attendance.module.js';
 import { AuthModule } from './auth/auth.module.js';
+import { BatchesModule } from './batches/batches.module.js';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from './auth/guards/roles.guard.js';
 import { ResponseInterceptor } from './common/interceptors/index.js';
@@ -24,6 +26,7 @@ import { OnlineClassesModule } from './online-classes/online-classes.module.js';
 import { OverviewModule } from './overview/overview.module.js';
 import { PaymentsModule } from './payments/payments.module.js';
 import { SettingsModule } from './settings/settings.module.js';
+import { StorageModule } from './storage/storage.module.js';
 import { StudentsModule } from './students/students.module.js';
 import { TeachersModule } from './teachers/teachers.module.js';
 
@@ -47,6 +50,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     }),
 
     EventEmitterModule.forRoot(),
+    ScheduleModule.forRoot(),
 
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
@@ -66,11 +70,13 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     }),
 
     AuthModule,
+    BatchesModule,
     NoticesModule,
     NotificationsModule,
     OnlineClassesModule,
     OverviewModule,
     SettingsModule,
+    StorageModule,
     TeachersModule,
     MailModule,
     StudentsModule,

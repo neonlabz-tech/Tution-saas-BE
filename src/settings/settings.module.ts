@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
+import { StorageModule } from '../storage/storage.module.js';
 import { User, UserSchema } from '../users/schemas/user.schema.js';
 import { Settings, SettingsSchema } from './schemas/settings.schema.js';
 import { SettingsController } from './settings.controller.js';
@@ -11,6 +12,7 @@ import { SettingsService } from './settings.service.js';
       { name: Settings.name, schema: SettingsSchema },
       { name: User.name, schema: UserSchema },
     ]),
+    StorageModule,
   ],
   controllers: [SettingsController],
   providers: [SettingsService],
