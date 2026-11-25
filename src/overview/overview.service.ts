@@ -435,7 +435,7 @@ export class OverviewService {
     let studentsWithBalances = 0;
     for (const student of students) {
       if (student.status === 'graduated') continue;
-      const feeTotal = student.moduleIds.reduce(
+      const feeTotal = (student.moduleIds || []).reduce(
         (sum, id) => sum + (feeMap.get(id) ?? 0),
         0,
       );
@@ -479,7 +479,12 @@ export class OverviewService {
           percentOfEnrollment: students.length
             ? Math.round((activeStudents / students.length) * 100)
             : 0,
-          spark: studentEnrollment.map((m) => m.added + 2),
+          spark: months12.map(
+            (m) =>
+              students.filter(
+                (s) => s.status === 'active' && s.enrollmentDate <= m.end,
+              ).length,
+          ),
         },
         totalTeachers: {
           value: teachers.length,
@@ -554,7 +559,11 @@ export class OverviewService {
       }));
 
     const recentRegistrations: RecentRegistrationItem[] = [...students]
-      .sort((a, b) => b.enrollmentDate.localeCompare(a.enrollmentDate))
+      .sort(
+        (a, b) =>
+          b.enrollmentDate.localeCompare(a.enrollmentDate) ||
+          b.id.localeCompare(a.id),
+      )
       .slice(0, 5)
       .map((s) => ({
         id: s.id,
@@ -571,7 +580,7 @@ export class OverviewService {
           t.category === 'Tuition fees' &&
           Boolean(t.studentId),
       )
-      .sort((a, b) => b.date.localeCompare(a.date))
+      .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id))
       .slice(0, 5)
       .map((p) => ({
         id: p.id,
