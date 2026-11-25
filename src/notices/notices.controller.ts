@@ -13,9 +13,12 @@ import {
   Patch,
   Post,
   Query,
+  Req,
+  Res,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
+import type { Request, Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBearerAuth,
@@ -200,9 +203,15 @@ export class NoticesController {
   @ApiResponse({ status: 410, description: 'Attachment expired' })
   async getAttachment(
     @Param('id') id: string,
+    @Res({ passthrough: true }) res: Response,
+    @Req() req: Request,
     @CurrentUser() user?: AuthenticatedUser,
-  ): Promise<AttachmentDownloadResult> {
-    return this.noticesService.getAttachmentDownload(id, viewOptions(user));
+  ): Promise<AttachmentDownloadResult | void> {
+    const result = await this.noticesService.getAttachmentDownload(id, viewOptions(user));
+    if (req.headers.accept?.includes('text/html')) {
+      return res.redirect(result.url);
+    }
+    return result;
   }
 
   @Delete(':id/attachment')
