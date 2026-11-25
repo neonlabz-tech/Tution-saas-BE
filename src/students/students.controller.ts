@@ -20,6 +20,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { AllowedRoles } from '../decorators/roles.decorator.js';
+import { Public } from '../decorators/public.decorator.js';
 import { Role } from '../enums/role.enum.js';
 import {
   createStudentSchema,
@@ -41,12 +42,12 @@ import { StudentsService } from './students.service.js';
 
 @ApiTags('Students')
 @ApiBearerAuth('access-token')
-@AllowedRoles(Role.ADMIN, Role.SUPER_ADMIN)
 @Controller('students')
 export class StudentsController {
   constructor(private readonly studentsService: StudentsService) {}
 
   @Get()
+  @AllowedRoles(Role.ADMIN, Role.SUPER_ADMIN)
   @ApiOperation({
     summary: 'List students with filtering, pagination, and fee summaries',
   })
@@ -95,6 +96,7 @@ export class StudentsController {
     return this.studentsService.lookupByCode(query.code);
   }
 
+  @Public()
   @Get(':id')
   @ApiOperation({
     summary: 'Fetch full student detail by STU-YYYY-NNN or database ID',
@@ -107,6 +109,7 @@ export class StudentsController {
   }
 
   @Post()
+  @AllowedRoles(Role.ADMIN, Role.SUPER_ADMIN)
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a new student (defaults to pending status)' })
   @ApiBody({
@@ -153,6 +156,7 @@ export class StudentsController {
   }
 
   @Post('bulk-batch')
+  @AllowedRoles(Role.ADMIN, Role.SUPER_ADMIN)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Move multiple students to another batch' })
   @ApiBody({
@@ -180,6 +184,7 @@ export class StudentsController {
   }
 
   @Patch(':id')
+  @AllowedRoles(Role.ADMIN, Role.SUPER_ADMIN)
   @ApiOperation({ summary: 'Update student fields or status' })
   @ApiParam({ name: 'id', description: 'Student ID (STU-YYYY-NNN) or Mongo _id' })
   @ApiBody({
@@ -218,6 +223,7 @@ export class StudentsController {
   }
 
   @Delete(':id')
+  @AllowedRoles(Role.ADMIN, Role.SUPER_ADMIN)
   @ApiOperation({
     summary: 'Delete student and cascade attendance records (preserves transactions)',
   })
@@ -229,6 +235,7 @@ export class StudentsController {
   }
 
   @Post(':id/rotate-qr')
+  @AllowedRoles(Role.ADMIN, Role.SUPER_ADMIN)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Rotate opaque student QR reference and invalidate previous QR cards',

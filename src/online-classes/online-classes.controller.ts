@@ -20,6 +20,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { AllowedRoles } from '../decorators/roles.decorator.js';
+import { Public } from '../decorators/public.decorator.js';
 import { Role } from '../enums/role.enum.js';
 import { CreateOnlineClassDto } from './dto/create-online-class.dto.js';
 import { QueryOnlineClassDto } from './dto/query-online-class.dto.js';
@@ -36,6 +37,7 @@ export class OnlineClassesController {
     private readonly onlineClassesService: OnlineClassesService,
   ) {}
 
+  @Public()
   @Get()
   @ApiOperation({ summary: 'Fetch all online classes with optional filtering' })
   @ApiResponse({
@@ -49,6 +51,7 @@ export class OnlineClassesController {
     return this.onlineClassesService.findAll(query);
   }
 
+  @Public()
   @Get(':id')
   @ApiOperation({ summary: 'Fetch a single online class by ID' })
   @ApiParam({ name: 'id', description: 'Class ID (e.g. cls_123)' })

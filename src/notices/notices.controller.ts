@@ -13,9 +13,12 @@ import {
   Patch,
   Post,
   Query,
+  Req,
+  Res,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
+import type { Request, Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBearerAuth,
@@ -31,6 +34,7 @@ import {
   CurrentUser,
 } from '../decorators/current-user.decorator.js';
 import { AllowedRoles } from '../decorators/roles.decorator.js';
+import { Public } from '../decorators/public.decorator.js';
 import { Role } from '../enums/role.enum.js';
 import { CreateNoticeDto } from './dto/create-notice.dto.js';
 import {
@@ -78,6 +82,7 @@ export class NoticesController {
     @Inject(NoticesService) private readonly noticesService: NoticesService,
   ) {}
 
+  @Public()
   @Get()
   @ApiOperation({
     summary: 'Fetch notices with filters and per-state counts',
@@ -93,6 +98,7 @@ export class NoticesController {
     return this.noticesService.findAll(query, viewOptions(user));
   }
 
+  @Public()
   @Get(':id')
   @ApiOperation({ summary: 'Fetch a single notice' })
   @ApiParam(ID_PARAM)
@@ -186,6 +192,7 @@ export class NoticesController {
     return this.noticesService.uploadAttachment(id, file);
   }
 
+  @Public()
   @Get(':id/attachment')
   @ApiOperation({
     summary: 'Get a short-lived presigned download URL for a notice attachment',
@@ -196,9 +203,15 @@ export class NoticesController {
   @ApiResponse({ status: 410, description: 'Attachment expired' })
   async getAttachment(
     @Param('id') id: string,
+    @Res({ passthrough: true }) res: Response,
+    @Req() req: Request,
     @CurrentUser() user?: AuthenticatedUser,
-  ): Promise<AttachmentDownloadResult> {
-    return this.noticesService.getAttachmentDownload(id, viewOptions(user));
+  ): Promise<AttachmentDownloadResult | void> {
+    const result = await this.noticesService.getAttachmentDownload(id, viewOptions(user));
+    if (req.headers.accept?.includes('text/html')) {
+      return res.redirect(result.url);
+    }
+    return result;
   }
 
   @Delete(':id/attachment')
