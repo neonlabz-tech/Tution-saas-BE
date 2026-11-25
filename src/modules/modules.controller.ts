@@ -21,6 +21,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { AllowedRoles } from '../decorators/roles.decorator.js';
+import { Public } from '../decorators/public.decorator.js';
 import { Role } from '../enums/role.enum.js';
 import {
   createModuleSchema,
@@ -46,6 +47,7 @@ import { ModulesService } from './modules.service.js';
 export class ModulesController {
   constructor(private readonly modulesService: ModulesService) {}
 
+  @Public()
   @Get()
   @ApiOperation({
     summary: 'Fetch all modules with search, filters, teacher and enrolled counts',
@@ -63,6 +65,7 @@ export class ModulesController {
     return this.modulesService.findAll(query);
   }
 
+  @Public()
   @Get(':id')
   @ApiOperation({
     summary: 'Fetch module details by module ID or database ID',
