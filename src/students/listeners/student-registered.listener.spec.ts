@@ -50,4 +50,23 @@ describe('StudentRegisteredListener', () => {
 
     await expect(listener.handleStudentRegistered(event)).resolves.toBeUndefined();
   });
+
+  it('skips registration email when isSelfRegistered is true', async () => {
+    const event = new StudentRegisteredEvent(
+      'STU-2026-002',
+      'a1b2c3d4e5f6g7h8',
+      'Kamal Silva',
+      'kamal@mail.lk',
+      '2025-A Morning',
+      'pending',
+      '2026-11-11',
+      [],
+      undefined,
+      true,
+    );
+
+    await listener.handleStudentRegistered(event);
+
+    expect(mockMailService.sendStudentRegistrationEmail).not.toHaveBeenCalled();
+  });
 });

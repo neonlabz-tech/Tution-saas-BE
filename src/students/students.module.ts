@@ -13,6 +13,7 @@ import {
   CourseModule,
   CourseModuleSchema,
 } from '../modules/schemas/module.schema.js';
+import { User, UserSchema } from '../users/schemas/user.schema.js';
 import { StudentRegisteredListener } from './listeners/student-registered.listener.js';
 import { Counter, CounterSchema } from './schemas/counter.schema.js';
 import { Student, StudentSchema } from './schemas/student.schema.js';
@@ -24,6 +25,7 @@ import { StudentsService } from './students.service.js';
     MailModule,
     MongooseModule.forFeature([
       { name: Student.name, schema: StudentSchema },
+      { name: User.name, schema: UserSchema },
       { name: Counter.name, schema: CounterSchema },
       { name: CourseModule.name, schema: CourseModuleSchema },
       { name: AttendanceRecord.name, schema: AttendanceRecordSchema },

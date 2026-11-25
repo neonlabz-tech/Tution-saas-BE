@@ -170,6 +170,15 @@ export class StudentsController {
     return this.studentsService.moveStudentsToBatch(body.studentIds, body.targetBatch);
   }
 
+  @Post(':id/verify')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Verify pending student and activate student portal account' })
+  @ApiParam({ name: 'id', description: 'Student ID (STU-YYYY-NNN) or Mongo _id' })
+  @ApiResponse({ status: 200, description: 'Student verified and activated' })
+  verify(@Param('id') id: string) {
+    return this.studentsService.verifyStudent(id);
+  }
+
   @Patch(':id')
   @ApiOperation({ summary: 'Update student fields or status' })
   @ApiParam({ name: 'id', description: 'Student ID (STU-YYYY-NNN) or Mongo _id' })
