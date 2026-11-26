@@ -48,6 +48,12 @@ export class OnlineClass {
   @Prop({ default: '', trim: true })
   description: string;
 
+  @Prop({ default: '', trim: true })
+  recordingUrl?: string;
+
+  @Prop({ type: Number, default: 0 })
+  recordingDuration?: number;
+
   @Prop({
     type: String,
     enum: Object.values(ClassStatus),
