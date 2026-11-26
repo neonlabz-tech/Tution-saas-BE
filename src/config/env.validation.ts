@@ -53,7 +53,7 @@ export function validateEnvironment(
   }
 
   if (!environment.INSTITUTE_NAME) {
-    environment.INSTITUTE_NAME = 'Bright Future Institute';
+    environment.INSTITUTE_NAME = 'Tuition Institute';
   }
 
   if (!environment.APP_NAME) {

@@ -239,6 +239,22 @@ export class SettingsService {
     };
   }
 
+  async getInstituteName(): Promise<string> {
+    const settings = await this.getOrCreateSettings();
+    if (settings?.institute?.name?.trim()) {
+      return settings.institute.name.trim();
+    }
+    return (
+      this.configService.get<string>('INSTITUTE_NAME')?.trim() ||
+      'Tuition Institute'
+    );
+  }
+
+  async getPublicInstitute(): Promise<InstituteSettings> {
+    const settings = await this.getOrCreateSettings();
+    return settings.institute;
+  }
+
   private async getOrCreateSettings(): Promise<Settings> {
     const existing = await this.settingsModel
       .findOne({ key: 'default' })

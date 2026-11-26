@@ -1,5 +1,6 @@
 import { Logger, Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { MongooseModule } from '@nestjs/mongoose';
 import {
   FileMailTransport,
   LogMailTransport,
@@ -8,6 +9,10 @@ import {
   SmtpTransport,
   type MailTransport,
 } from '@nestjs/mail';
+import {
+  Settings,
+  SettingsSchema,
+} from '../settings/schemas/settings.schema.js';
 import { MailService } from './mail.service.js';
 
 function createMailTransport(configService: ConfigService): MailTransport {
@@ -61,6 +66,9 @@ function createMailTransport(configService: ConfigService): MailTransport {
 
 @Module({
   imports: [
+    MongooseModule.forFeature([
+      { name: Settings.name, schema: SettingsSchema },
+    ]),
     NestMailModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

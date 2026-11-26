@@ -9,6 +9,7 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import bcrypt from 'bcryptjs';
 import { vi } from 'vitest';
 import { Role } from '../enums/role.enum.js';
+import { StorageService } from '../storage/storage.service.js';
 import { User } from '../users/schemas/user.schema.js';
 import { Settings } from './schemas/settings.schema.js';
 import { SettingsService } from './settings.service.js';
@@ -72,6 +73,10 @@ describe('SettingsService', () => {
         {
           provide: ConfigService,
           useValue: { get: vi.fn() },
+        },
+        {
+          provide: StorageService,
+          useValue: { uploadBase64: vi.fn() },
         },
       ],
     }).compile();

@@ -41,7 +41,7 @@ export function getAuthConfig(
         ? passwordMinRaw
         : 8,
     instituteName:
-      configService.get<string>('INSTITUTE_NAME') || 'Bright Future Institute',
+      configService.get<string>('INSTITUTE_NAME') || 'Tuition Institute',
     defaultAdminName:
       configService.get<string>('ADMIN_DEFAULT_NAME') || 'Admin',
     defaultAdminEmail:
