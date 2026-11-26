@@ -38,24 +38,36 @@ export class Settings {
 
   @Prop({
     type: {
-      name: { type: String, default: 'Bright Future Institute' },
-      email: { type: String, default: 'hello@brightfuture.lk' },
-      phone: { type: String, default: '0112345678' },
-      address: { type: String, default: '42, Temple Road, Colombo 07' },
+      name: {
+        type: String,
+        default: () => process.env.INSTITUTE_NAME || 'Tuition Institute',
+      },
+      email: {
+        type: String,
+        default: () => process.env.INSTITUTE_EMAIL || 'info@institute.lk',
+      },
+      phone: {
+        type: String,
+        default: () => process.env.INSTITUTE_PHONE || '0112345678',
+      },
+      address: {
+        type: String,
+        default: () => process.env.INSTITUTE_ADDRESS || 'Colombo, Sri Lanka',
+      },
       about: {
         type: String,
         default:
-          'A modern tuition institute for GCE Advanced Level and professional courses.',
+          'A modern tuition institute for student education and professional courses.',
       },
       logo: { type: String, default: null },
     },
     default: () => ({
-      name: 'Bright Future Institute',
-      email: 'hello@brightfuture.lk',
-      phone: '0112345678',
-      address: '42, Temple Road, Colombo 07',
+      name: process.env.INSTITUTE_NAME || 'Tuition Institute',
+      email: process.env.INSTITUTE_EMAIL || 'info@institute.lk',
+      phone: process.env.INSTITUTE_PHONE || '0112345678',
+      address: process.env.INSTITUTE_ADDRESS || 'Colombo, Sri Lanka',
       about:
-        'A modern tuition institute for GCE Advanced Level and professional courses.',
+        'A modern tuition institute for student education and professional courses.',
       logo: null,
     }),
   })

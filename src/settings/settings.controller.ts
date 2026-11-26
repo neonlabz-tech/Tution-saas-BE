@@ -3,6 +3,7 @@ import {
   type AuthenticatedUser,
   CurrentUser,
 } from '../decorators/current-user.decorator.js';
+import { Public } from '../decorators/public.decorator.js';
 import { AllowedRoles } from '../decorators/roles.decorator.js';
 import { Role } from '../enums/role.enum.js';
 import { UpdateAppearanceDto } from './dto/update-appearance.dto.js';
@@ -17,6 +18,12 @@ export class SettingsController {
   constructor(
     @Inject(SettingsService) private readonly settingsService: SettingsService,
   ) {}
+
+  @Public()
+  @Get('public')
+  getPublicInstitute() {
+    return this.settingsService.getPublicInstitute();
+  }
 
   @Get()
   getSettings(@CurrentUser() user: AuthenticatedUser) {

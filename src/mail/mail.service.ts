@@ -1,6 +1,12 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Mailer } from '@nestjs/mail';
+import { InjectModel } from '@nestjs/mongoose';
+import type { Model } from 'mongoose';
+import {
+  Settings,
+  type SettingsDocument,
+} from '../settings/schemas/settings.schema.js';
 import type { StudentRegisteredEvent } from '../students/events/student-registered.event.js';
 
 @Injectable()
@@ -10,15 +16,35 @@ export class MailService {
   constructor(
     private readonly mailer: Mailer,
     private readonly configService: ConfigService,
+    @Optional()
+    @InjectModel(Settings.name)
+    private readonly settingsModel?: Model<SettingsDocument>,
   ) {}
+
+  private async getInstituteName(): Promise<string> {
+    try {
+      if (this.settingsModel) {
+        const settings = await this.settingsModel
+          .findOne({ key: 'default' })
+          .lean<Settings>()
+          .exec();
+        if (settings?.institute?.name?.trim()) {
+          return settings.institute.name.trim();
+        }
+      }
+    } catch (err) {
+      this.logger.warn(`Could not load institute name from settings: ${err}`);
+    }
+    return (
+      this.configService.get<string>('INSTITUTE_NAME')?.trim() ||
+      'Tuition Institute'
+    );
+  }
 
   async sendStudentRegistrationEmail(
     payload: StudentRegisteredEvent,
   ): Promise<void> {
-    const instituteName = this.configService.get<string>(
-      'INSTITUTE_NAME',
-      'Bright Future Institute',
-    );
+    const instituteName = await this.getInstituteName();
     const appName = this.configService.get<string>('APP_NAME', 'EduFlow');
     const frontendUrl = (
       this.configService.get<string>('FRONTEND_URL') || 'http://localhost:5714'
@@ -195,6 +221,7 @@ export class MailService {
           `Notice: If using the free Resend test domain (onboarding@resend.dev), Resend strictly permits delivery ONLY to kajaluxmyneonlabz@gmail.com. ` +
           `Credentials for ${payload.email}: Student ID: ${payload.studentId}, Password: ${payload.temporaryPassword}, Login: ${studentLoginUrl}`,
       );
+      throw err;
     }
   }
 
@@ -203,10 +230,7 @@ export class MailService {
     fullName: string;
     studentId: string;
   }): Promise<void> {
-    const instituteName = this.configService.get<string>(
-      'INSTITUTE_NAME',
-      'Bright Future Institute',
-    );
+    const instituteName = await this.getInstituteName();
     const frontendUrl = (
       this.configService.get<string>('FRONTEND_URL') || 'http://localhost:5714'
     ).replace(/\/+$/, '');
