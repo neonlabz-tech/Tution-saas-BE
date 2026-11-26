@@ -217,6 +217,15 @@ export class StorageService {
 
   private mimeToExtension(mime: string): string {
     switch (mime.toLowerCase()) {
+      case 'application/pdf':
+        return 'pdf';
+      case 'application/zip':
+      case 'application/x-zip-compressed':
+        return 'zip';
+      case 'application/msword':
+        return 'doc';
+      case 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+        return 'docx';
       case 'image/png':
         return 'png';
       case 'image/jpeg':
@@ -229,7 +238,7 @@ export class StorageService {
       case 'image/gif':
         return 'gif';
       default:
-        return 'png';
+        return 'bin';
     }
   }
 }
