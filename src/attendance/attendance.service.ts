@@ -630,13 +630,10 @@ export class AttendanceService {
         if (query.moduleId && query.moduleId !== 'all' && mid !== query.moduleId) {
           continue;
         }
-        const mod = moduleMap.get(mid) ?? {
-          id: mid,
-          name: mid,
-          code: mid,
-          teacherId: null,
-          fee: 0,
-        };
+        const mod = moduleMap.get(mid);
+        if (!mod) {
+          continue;
+        }
 
         if (searchTerm) {
           const lower = searchTerm.toLowerCase();
