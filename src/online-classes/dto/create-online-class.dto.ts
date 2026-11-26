@@ -97,6 +97,21 @@ export class CreateOnlineClassDto {
   description?: string;
 
   @ApiPropertyOptional({
+    description: 'URL of class video recording (e.g. YouTube unlisted, Vimeo, Cloud stream)',
+    example: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+  })
+  @IsOptional()
+  @IsString()
+  recordingUrl?: string;
+
+  @ApiPropertyOptional({
+    description: 'Duration of the recording in minutes',
+    example: 90,
+  })
+  @IsOptional()
+  recordingDuration?: number;
+
+  @ApiPropertyOptional({
     description: 'Class status',
     enum: ClassStatus,
     default: ClassStatus.SCHEDULED,

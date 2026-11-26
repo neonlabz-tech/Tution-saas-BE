@@ -221,6 +221,7 @@ export class StudentsService {
         $or: [
           { ref: normalized },
           { id: new RegExp(`^${this.escapeRegex(normalized)}$`, 'i') },
+          { email: new RegExp(`^${this.escapeRegex(normalized)}$`, 'i') },
         ],
       })
       .lean();
