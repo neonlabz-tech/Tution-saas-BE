@@ -82,10 +82,10 @@ export class StudentsController {
     return this.studentsService.findAll(query);
   }
 
+  @Public()
   @Get('lookup')
-  @AllowedRoles(Role.ADMIN, Role.SUPER_ADMIN, Role.TEACHER)
   @ApiOperation({
-    summary: 'Look up student by EDUFLOW:<ref>, raw <ref>, or STU-YYYY-NNN',
+    summary: 'Look up student by EDUFLOW:<ref>, raw <ref>, STU-YYYY-NNN, or email',
   })
   @ApiQuery({ name: 'code', required: true })
   @ApiResponse({ status: 200, description: 'Student matched' })

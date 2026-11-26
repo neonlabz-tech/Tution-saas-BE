@@ -377,6 +377,7 @@ describe('StudentsService', () => {
         $or: [
           { ref: 'abc123def456gh78' },
           { id: expect.any(RegExp) },
+          { email: expect.any(RegExp) },
         ],
       });
       expect(detail.id).toBe('STU-2026-001');
