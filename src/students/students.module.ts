@@ -8,6 +8,10 @@ import {
   Transaction,
   TransactionSchema,
 } from '../finance/schemas/transaction.schema.js';
+import {
+  Payment,
+  PaymentSchema,
+} from '../payments/schemas/payment.schema.js';
 import { MailModule } from '../mail/mail.module.js';
 import {
   CourseModule,
@@ -30,6 +34,7 @@ import { StudentsService } from './students.service.js';
       { name: CourseModule.name, schema: CourseModuleSchema },
       { name: AttendanceRecord.name, schema: AttendanceRecordSchema },
       { name: Transaction.name, schema: TransactionSchema },
+      { name: Payment.name, schema: PaymentSchema },
     ]),
   ],
   controllers: [StudentsController],

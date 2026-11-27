@@ -34,6 +34,7 @@ export interface NotificationItem {
   link: string;
   read: boolean;
   persisted: boolean;
+  createdAt?: string | Date;
 }
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -132,6 +133,7 @@ export class NotificationsService {
         link: n.link || '/dashboard/notices',
         read: n.read,
         persisted: true,
+        createdAt: (n as any).createdAt ?? new Date(),
       }));
 
     // No notice alerts for admins: they create notices themselves.
@@ -145,7 +147,7 @@ export class NotificationsService {
             c.start.slice(0, 10) >= today,
         )
         .sort((a, b) => a.start.localeCompare(b.start))
-        .slice(0, 2)
+        .slice(0, 15)
         .forEach((c) => {
           const dayLabel =
             c.start.slice(0, 10) === today ? 'Today' : c.start.slice(5, 10);
@@ -158,6 +160,7 @@ export class NotificationsService {
             link: '/dashboard/online-classes',
             read: readIds.has(itemId),
             persisted: false,
+            createdAt: (c as any).createdAt ? new Date((c as any).createdAt) : new Date(),
           });
         });
     }
@@ -199,6 +202,7 @@ export class NotificationsService {
           link: '/dashboard/finance',
           read: readIds.has(itemId),
           persisted: false,
+          createdAt: new Date(),
         });
       }
     }
@@ -210,7 +214,7 @@ export class NotificationsService {
           s.enrollmentDate >= tenDaysAgoISO &&
           s.enrollmentDate <= today,
       )
-      .slice(0, 5)
+      .slice(0, 15)
       .forEach((s) => {
         const itemId = `stu_reg_${s.id}`;
         items.push({
@@ -221,6 +225,7 @@ export class NotificationsService {
           link: '/dashboard/students',
           read: readIds.has(itemId),
           persisted: false,
+          createdAt: s.enrollmentDate ? new Date(s.enrollmentDate) : new Date(),
         });
       });
 
@@ -233,7 +238,7 @@ export class NotificationsService {
             tx.date >= tenDaysAgoISO &&
             tx.date <= today,
         )
-        .slice(0, 5)
+        .slice(0, 15)
         .forEach((tx) => {
           const itemId = `pay_rec_${tx.id}`;
           const sName = tx.studentId ? studentNameMap.get(tx.studentId) : null;
@@ -247,6 +252,7 @@ export class NotificationsService {
             link: '/dashboard/finance',
             read: readIds.has(itemId),
             persisted: false,
+            createdAt: tx.date ? new Date(tx.date) : new Date(),
           });
         });
     }
@@ -271,6 +277,13 @@ export class NotificationsService {
       link: dto.link ?? '/dashboard/notices',
       read: false,
       recipientId: null,
+      actorId: dto.actorId,
+      actorRole: dto.actorRole,
+      targetRoles: dto.targetRoles,
+      targetUserIds: dto.targetUserIds,
+      targetBatch: dto.targetBatch,
+      priority: dto.priority,
+      metadata: dto.metadata,
     });
 
     return {

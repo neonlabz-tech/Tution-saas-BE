@@ -167,8 +167,19 @@ export class TeachersService {
       {
         $lookup: {
           from: 'modules',
-          localField: 'id',
-          foreignField: 'teacherId',
+          let: { teacherId: '$id', tModIds: { $ifNull: ['$moduleIds', []] } },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $or: [
+                    { $eq: ['$teacherId', '$$teacherId'] },
+                    { $in: ['$id', '$$tModIds'] },
+                  ],
+                },
+              },
+            },
+          ],
           as: 'assignedModulesRaw',
         },
       },
@@ -219,13 +230,7 @@ export class TeachersService {
             },
           },
           workload: {
-            modulesCount: {
-              $cond: [
-                { $gt: [{ $size: '$assignedModulesRaw' }, 0] },
-                { $size: '$assignedModulesRaw' },
-                { $size: { $ifNull: ['$moduleIds', []] } },
-              ],
-            },
+            modulesCount: { $size: '$assignedModulesRaw' },
             studentsCount: { $size: '$enrolledStudents' },
           },
         },
@@ -524,12 +529,18 @@ export class TeachersService {
     teacher: Teacher,
   ): Promise<TeacherProfileResponse> {
     const assignedRaw = await this.moduleModel
-      .find({ teacherId: teacher.id })
+      .find({
+        $or: [
+          { teacherId: teacher.id },
+          { id: { $in: teacher.moduleIds ?? [] } },
+        ],
+      })
       .lean<CourseModule[]>()
       .exec();
 
     const assignedModuleIds = assignedRaw.map((m) => m.id);
     const todayPrefix = new Date().toISOString().slice(0, 10);
+    const isInactive = teacher.status === TeacherStatus.INACTIVE;
 
     const [students, upcomingSchedule] = await Promise.all([
       assignedModuleIds.length > 0
@@ -538,16 +549,18 @@ export class TeachersService {
             .lean<Pick<Student, 'id' | 'moduleIds'>[]>()
             .exec()
         : Promise.resolve([]),
-      this.onlineClassModel
-        .find({
-          teacherId: teacher.id,
-          status: { $ne: ClassStatus.CANCELLED },
-          start: { $gte: todayPrefix },
-        })
-        .sort({ start: 1 })
-        .limit(UPCOMING_SCHEDULE_LIMIT)
-        .lean<OnlineClass[]>()
-        .exec(),
+      !isInactive
+        ? this.onlineClassModel
+            .find({
+              teacherId: teacher.id,
+              status: { $ne: ClassStatus.CANCELLED },
+              start: { $gte: todayPrefix },
+            })
+            .sort({ start: 1 })
+            .limit(UPCOMING_SCHEDULE_LIMIT)
+            .lean<OnlineClass[]>()
+            .exec()
+        : Promise.resolve([]),
     ]);
 
     const { assignedModules, workload } = this.computeWorkload(
@@ -556,20 +569,18 @@ export class TeachersService {
       students,
     );
 
-    const fallbackModuleCount =
-      assignedModules.length > 0
-        ? assignedModules.length
-        : (teacher.moduleIds?.length ?? 0);
-
     return {
       ...teacher,
       moduleIds: teacher.moduleIds ?? [],
       assignedModules,
+      upcomingSchedule,
       workload: {
         ...workload,
-        modulesCount: fallbackModuleCount,
+        modulesCount:
+          assignedModules.length > 0
+            ? assignedModules.length
+            : (teacher.moduleIds?.length ?? 0),
       },
-      upcomingSchedule,
     };
   }
 

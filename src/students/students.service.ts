@@ -20,6 +20,10 @@ import {
   Transaction,
   type TransactionDocument,
 } from '../finance/schemas/transaction.schema.js';
+import {
+  Payment,
+  type PaymentDocument,
+} from '../payments/schemas/payment.schema.js';
 import { MailService } from '../mail/mail.service.js';
 import {
   CourseModule,
@@ -115,6 +119,9 @@ export class StudentsService {
 
     @InjectModel(Transaction.name)
     private readonly transactionModel: Model<TransactionDocument>,
+
+    @InjectModel(Payment.name)
+    private readonly paymentModel: Model<PaymentDocument>,
 
     @InjectModel(User.name)
     private readonly userModel: Model<UserDocument>,
@@ -481,6 +488,16 @@ export class StudentsService {
           { session },
         );
         deletedUserCount = userRes.deletedCount ?? 0;
+
+        // Cascade delete payments and financial transactions (Bug_017 fix)
+        await this.paymentModel.deleteMany(
+          { studentId: existing.id },
+          { session },
+        );
+        await this.transactionModel.deleteMany(
+          { studentId: existing.id },
+          { session },
+        );
       });
     } finally {
       await session.endSession();

@@ -199,7 +199,11 @@ export class AnalyticsService {
         .lean()
         .exec(),
       this.transactionModel
-        .find({ type: TxType.INCOME, category: 'Tuition fees' })
+        .find({
+          type: TxType.INCOME,
+          category: 'Tuition fees',
+          date: { $gte: range.from, $lte: range.to },
+        })
         .select('studentId amount')
         .lean()
         .exec(),
@@ -346,8 +350,13 @@ export class AnalyticsService {
     if (query.status) moduleFilter.status = query.status;
 
     const attendanceFilter: Record<string, unknown> = {};
+    const paymentFilter: Record<string, unknown> = {
+      type: TxType.INCOME,
+      category: 'Tuition fees',
+    };
     if (range) {
       attendanceFilter.date = { $gte: range.from, $lte: range.to };
+      paymentFilter.date = { $gte: range.from, $lte: range.to };
     }
 
     const [
@@ -367,7 +376,7 @@ export class AnalyticsService {
       this.teacherModel.find().select('id fullName').lean().exec(),
       this.studentModel.find().select('id moduleIds').lean().exec(),
       this.transactionModel
-        .find({ type: TxType.INCOME, category: 'Tuition fees' })
+        .find(paymentFilter)
         .select('studentId amount')
         .lean()
         .exec(),

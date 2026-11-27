@@ -82,7 +82,7 @@ export class NoticesController {
     @Inject(NoticesService) private readonly noticesService: NoticesService,
   ) {}
 
-  @Public()
+  @AllowedRoles(Role.ADMIN, Role.SUPER_ADMIN, Role.TEACHER, Role.STUDENT)
   @Get()
   @ApiOperation({
     summary: 'Fetch notices with filters and per-state counts',
@@ -98,7 +98,7 @@ export class NoticesController {
     return this.noticesService.findAll(query, viewOptions(user));
   }
 
-  @Public()
+  @AllowedRoles(Role.ADMIN, Role.SUPER_ADMIN, Role.TEACHER, Role.STUDENT)
   @Get(':id')
   @ApiOperation({ summary: 'Fetch a single notice' })
   @ApiParam(ID_PARAM)
@@ -192,7 +192,7 @@ export class NoticesController {
     return this.noticesService.uploadAttachment(id, file);
   }
 
-  @Public()
+  @AllowedRoles(Role.ADMIN, Role.SUPER_ADMIN, Role.TEACHER, Role.STUDENT)
   @Get(':id/attachment')
   @ApiOperation({
     summary: 'Get a short-lived presigned download URL for a notice attachment',

@@ -82,7 +82,7 @@ export class StudentsController {
     return this.studentsService.findAll(query);
   }
 
-  @Public()
+  @AllowedRoles(Role.ADMIN, Role.SUPER_ADMIN, Role.TEACHER, Role.STUDENT)
   @Get('lookup')
   @ApiOperation({
     summary: 'Look up student by EDUFLOW:<ref>, raw <ref>, STU-YYYY-NNN, or email',
@@ -96,7 +96,7 @@ export class StudentsController {
     return this.studentsService.lookupByCode(query.code);
   }
 
-  @Public()
+  @AllowedRoles(Role.ADMIN, Role.SUPER_ADMIN, Role.TEACHER, Role.STUDENT)
   @Get(':id')
   @ApiOperation({
     summary: 'Fetch full student detail by STU-YYYY-NNN or database ID',

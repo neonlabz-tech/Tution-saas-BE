@@ -14,7 +14,12 @@ function createChainableQuery<T>(result: T) {
     sort: vi.fn().mockReturnThis(),
     skip: vi.fn().mockReturnThis(),
     limit: vi.fn().mockReturnThis(),
-    lean: vi.fn().mockResolvedValue(result),
+    exec: vi.fn().mockResolvedValue(result),
+    lean: vi.fn().mockImplementation(() => {
+      const leanObj = Promise.resolve(result);
+      (leanObj as any).exec = vi.fn().mockResolvedValue(result);
+      return leanObj;
+    }),
   };
   return query;
 }
@@ -42,6 +47,16 @@ describe('StudentsService', () => {
   };
   let transactionModel: {
     find: ReturnType<typeof vi.fn>;
+    deleteMany: ReturnType<typeof vi.fn>;
+  };
+  let paymentModel: {
+    deleteMany: ReturnType<typeof vi.fn>;
+  };
+  let userModel: {
+    findOne: ReturnType<typeof vi.fn>;
+    create: ReturnType<typeof vi.fn>;
+    updateMany: ReturnType<typeof vi.fn>;
+    deleteMany: ReturnType<typeof vi.fn>;
   };
   let mockSession: {
     withTransaction: ReturnType<typeof vi.fn>;
@@ -52,6 +67,9 @@ describe('StudentsService', () => {
   };
   let eventEmitter: {
     emit: ReturnType<typeof vi.fn>;
+  };
+  let mailService: {
+    sendStudentCredentialsEmail: ReturnType<typeof vi.fn>;
   };
 
   const sampleModules = [
@@ -103,6 +121,19 @@ describe('StudentsService', () => {
 
     transactionModel = {
       find: vi.fn(),
+      deleteMany: vi.fn().mockResolvedValue({ deletedCount: 0 }),
+    };
+
+    paymentModel = {
+      deleteMany: vi.fn().mockResolvedValue({ deletedCount: 0 }),
+    };
+
+    userModel = {
+      find: vi.fn().mockReturnValue(createChainableQuery([])),
+      findOne: vi.fn().mockReturnValue({ exec: vi.fn().mockResolvedValue(null) }),
+      create: vi.fn().mockResolvedValue({ id: 'usr_1', email: 'test@example.com' }),
+      updateMany: vi.fn().mockReturnValue({ exec: vi.fn().mockResolvedValue({ modifiedCount: 1 }) }),
+      deleteMany: vi.fn().mockReturnValue({ exec: vi.fn().mockResolvedValue({ deletedCount: 0 }) }),
     };
 
     mockSession = {
@@ -120,14 +151,21 @@ describe('StudentsService', () => {
       emit: vi.fn(),
     };
 
+    mailService = {
+      sendStudentCredentialsEmail: vi.fn().mockResolvedValue(undefined),
+    };
+
     service = new StudentsService(
       studentModel as never,
       counterModel as never,
       moduleModel as never,
       attendanceModel as never,
       transactionModel as never,
+      paymentModel as never,
+      userModel as never,
       connection as never,
       eventEmitter as never,
+      mailService as never,
     );
   });
 
@@ -552,6 +590,7 @@ describe('StudentsService', () => {
         deleted: true,
         id: 'STU-2026-001',
         deletedAttendanceCount: 4,
+        deletedUserCount: 0,
       });
     });
 

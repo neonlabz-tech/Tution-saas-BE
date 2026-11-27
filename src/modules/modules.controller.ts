@@ -47,7 +47,7 @@ import { ModulesService } from './modules.service.js';
 export class ModulesController {
   constructor(private readonly modulesService: ModulesService) {}
 
-  @Public()
+  @AllowedRoles(Role.ADMIN, Role.SUPER_ADMIN, Role.TEACHER, Role.STUDENT)
   @Get()
   @ApiOperation({
     summary: 'Fetch all modules with search, filters, teacher and enrolled counts',
@@ -65,7 +65,7 @@ export class ModulesController {
     return this.modulesService.findAll(query);
   }
 
-  @Public()
+  @AllowedRoles(Role.ADMIN, Role.SUPER_ADMIN, Role.TEACHER, Role.STUDENT)
   @Get(':id')
   @ApiOperation({
     summary: 'Fetch module details by module ID or database ID',

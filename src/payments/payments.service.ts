@@ -259,11 +259,12 @@ export class PaymentsService {
       };
     });
 
-    const debtorCount = computedAll.filter((s) => s.outstanding > 0).length;
-    const settledCount = computedAll.filter(
+    const activeForSummary = computedAll.filter((s) => s.status === 'active');
+    const debtorCount = activeForSummary.filter((s) => s.outstanding > 0).length;
+    const settledCount = activeForSummary.filter(
       (s) => s.paymentStatus === 'paid',
     ).length;
-    const totalOutstanding = computedAll.reduce(
+    const totalOutstanding = activeForSummary.reduce(
       (sum, s) => sum + s.outstanding,
       0,
     );
@@ -274,7 +275,7 @@ export class PaymentsService {
 
     let filtered = computedAll;
     if (query.debtorsOnly) {
-      filtered = filtered.filter((s) => s.outstanding > 0);
+      filtered = filtered.filter((s) => s.status === 'active' && s.outstanding > 0);
     }
     if (query.paymentStatus) {
       filtered = filtered.filter((s) => s.paymentStatus === query.paymentStatus);
@@ -382,7 +383,8 @@ export class PaymentsService {
     }
 
     const totalCollected = matchingForSummary.reduce(
-      (sum, p) => (p.status === 'completed' ? sum + p.amount : sum),
+      (sum, p) =>
+        p.status !== 'refunded' && p.status !== 'void' ? sum + p.amount : sum,
       0,
     );
 
