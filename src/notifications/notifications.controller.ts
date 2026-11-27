@@ -23,26 +23,26 @@ export class NotificationsController {
     private readonly notificationsService: NotificationsService,
   ) {}
 
-  @Public()
+  @AllowedRoles(Role.ADMIN, Role.SUPER_ADMIN, Role.TEACHER, Role.STUDENT)
   @Get()
   getNotifications() {
     return this.notificationsService.getNotifications();
   }
 
   @Post()
-  @AllowedRoles(Role.ADMIN, Role.SUPER_ADMIN)
+  @AllowedRoles(Role.ADMIN, Role.SUPER_ADMIN, Role.TEACHER)
   @HttpCode(HttpStatus.CREATED)
   create(@Body() dto: CreateNotificationDto) {
     return this.notificationsService.create(dto);
   }
 
-  @Public()
+  @AllowedRoles(Role.ADMIN, Role.SUPER_ADMIN, Role.TEACHER, Role.STUDENT)
   @Patch('read-all')
   markAllAsRead() {
     return this.notificationsService.markAllAsRead();
   }
 
-  @Public()
+  @AllowedRoles(Role.ADMIN, Role.SUPER_ADMIN, Role.TEACHER, Role.STUDENT)
   @Patch(':id/read')
   markAsRead(@Param('id') id: string) {
     return this.notificationsService.markAsRead(id);

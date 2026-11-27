@@ -8,7 +8,8 @@ export type NotificationType =
   | 'class'
   | 'payment'
   | 'student'
-  | 'system';
+  | 'system'
+  | 'attendance';
 
 @Schema({
   timestamps: true,
@@ -22,7 +23,7 @@ export class Notification {
 
   @Prop({
     type: String,
-    enum: ['notice', 'class', 'payment', 'student', 'system'],
+    enum: ['notice', 'class', 'payment', 'student', 'system', 'attendance'],
     default: 'system',
   })
   type: NotificationType;
@@ -44,6 +45,27 @@ export class Notification {
 
   @Prop({ type: String, default: null, index: true })
   recipientId: string | null;
+
+  @Prop({ type: String, default: undefined })
+  actorId?: string;
+
+  @Prop({ type: String, default: undefined })
+  actorRole?: string;
+
+  @Prop({ type: [String], default: undefined })
+  targetRoles?: string[];
+
+  @Prop({ type: [String], default: undefined })
+  targetUserIds?: string[];
+
+  @Prop({ type: String, default: undefined })
+  targetBatch?: string;
+
+  @Prop({ type: String, default: undefined })
+  priority?: string;
+
+  @Prop({ type: Object, default: undefined })
+  metadata?: Record<string, any>;
 }
 
 export const NotificationSchema = SchemaFactory.createForClass(Notification);

@@ -153,17 +153,27 @@ export class ModulesService {
     );
 
     const teacherMap = new Map<string, { id: string; fullName: string }>();
-    if (teacherIds.length > 0) {
-      const teachers = await this.teacherModel
-        .find({ id: { $in: teacherIds } })
-        .select('id fullName')
-        .lean();
-      for (const t of teachers) {
-        teacherMap.set(t.id, { id: t.id, fullName: t.fullName });
+    const teacherByModuleId = new Map<string, { id: string; fullName: string }>();
+    const moduleIds = modules.map((m) => m.id);
+
+    const teachers = await this.teacherModel
+      .find({
+        $or: [
+          { id: { $in: teacherIds } },
+          { moduleIds: { $in: moduleIds } },
+        ],
+      })
+      .select('id fullName moduleIds')
+      .lean();
+    for (const t of teachers) {
+      teacherMap.set(t.id, { id: t.id, fullName: t.fullName });
+      for (const modId of (t as any).moduleIds ?? []) {
+        if (!teacherByModuleId.has(modId)) {
+          teacherByModuleId.set(modId, { id: t.id, fullName: t.fullName });
+        }
       }
     }
 
-    const moduleIds = modules.map((m) => m.id);
     const enrollmentCounts = await this.studentModel.aggregate<{
       _id: string;
       count: number;
@@ -177,21 +187,27 @@ export class ModulesService {
       enrollmentCounts.map((ec) => [ec._id, ec.count]),
     );
 
-    return modules.map((m) => ({
-      id: m.id,
-      code: m.code,
-      name: m.name,
-      description: m.description ?? '',
-      fee: m.fee,
-      duration: m.duration ?? '',
-      teacherId: m.teacherId ?? null,
-      teacher: m.teacherId ? (teacherMap.get(m.teacherId) ?? null) : null,
-      batches: m.batches ?? [],
-      status: m.status as ModuleStatus,
-      enrolledCount: countMap.get(m.id) ?? 0,
-      createdAt: (m as { createdAt?: Date }).createdAt,
-      updatedAt: (m as { updatedAt?: Date }).updatedAt,
-    }));
+    return modules.map((m) => {
+      const assignedTeacher = m.teacherId
+        ? (teacherMap.get(m.teacherId) ?? null)
+        : (teacherByModuleId.get(m.id) ?? null);
+      const effectiveTeacherId = m.teacherId ?? assignedTeacher?.id ?? null;
+      return {
+        id: m.id,
+        code: m.code,
+        name: m.name,
+        description: m.description ?? '',
+        fee: m.fee,
+        duration: m.duration ?? '',
+        teacherId: effectiveTeacherId,
+        teacher: assignedTeacher,
+        batches: m.batches ?? [],
+        status: m.status as ModuleStatus,
+        enrolledCount: countMap.get(m.id) ?? 0,
+        createdAt: (m as { createdAt?: Date }).createdAt,
+        updatedAt: (m as { updatedAt?: Date }).updatedAt,
+      };
+    });
   }
 
   async findOne(id: string): Promise<ModuleDetailResponse> {

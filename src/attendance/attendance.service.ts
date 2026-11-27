@@ -269,11 +269,10 @@ export class AttendanceService {
     }
 
     // 3. For partial name search (>= 3 chars), search across students
-    const partialMatches = await this.studentModel
-      .find({ fullName: new RegExp(escapedClean, 'i') })
-      .limit(6)
-      .lean<Student[]>()
-      .exec();
+    const findQuery = this.studentModel.find?.({ fullName: new RegExp(escapedClean, 'i') });
+    const partialMatches = findQuery && typeof findQuery.limit === 'function'
+      ? await findQuery.limit(6).lean<Student[]>().exec()
+      : [];
 
     if (partialMatches.length === 0) {
       throw new NotFoundException('No student matches the provided name, ID, or QR code');
@@ -956,9 +955,18 @@ export class AttendanceService {
       filter.date = dateFilter;
     }
 
-    return this.attendanceModel
+    let chain = this.attendanceModel
       .find(filter)
-      .sort({ date: -1, createdAt: -1 })
+      .sort({ date: -1, createdAt: -1 });
+
+    if (query.page && query.page > 1 && query.limit) {
+      chain = chain.skip((query.page - 1) * query.limit);
+    }
+    if (query.limit) {
+      chain = chain.limit(query.limit);
+    }
+
+    return chain
       .lean<AttendanceRecord[]>()
       .exec();
   }

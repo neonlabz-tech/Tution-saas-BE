@@ -193,6 +193,26 @@ export class OnlineClassesService {
     if (res.deletedCount === 0) {
       throw new NotFoundException(`Online class with ID "${id}" not found`);
     }
+
+    // Cascade delete notifications for this class (Bug_021 fix)
+    try {
+      await this.notificationModel
+        .deleteMany({
+          $or: [
+            { id },
+            { id: `cls_${id}` },
+            { id: { $regex: id } },
+            { 'metadata.classId': id },
+            { link: { $regex: id } },
+          ],
+        })
+        .exec();
+    } catch (err) {
+      this.logger.warn(
+        `Failed to cascade delete class notifications for ${id}: ${err}`,
+      );
+    }
+
     return { deleted: true, id };
   }
 

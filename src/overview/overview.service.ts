@@ -48,7 +48,7 @@ export interface OverviewSummary {
 export interface OverviewKpis {
   totalStudents: {
     value: number;
-    delta: number;
+    delta?: number;
     spark: number[];
   };
   activeStudents: {
@@ -71,12 +71,12 @@ export interface OverviewKpis {
   };
   monthlyIncome: {
     value: number;
-    delta: number;
+    delta?: number;
     spark: number[];
   };
   monthlyExpenses: {
     value: number;
-    delta: number;
+    delta?: number;
     spark: number[];
   };
   outstandingPayments: {
@@ -217,8 +217,10 @@ function buildMonths(count: number, now: Date) {
   });
 }
 
-function pctDelta(current: number, previous: number): number {
-  return previous ? Math.round(((current - previous) / previous) * 100) : 0;
+function pctDelta(current: number, previous: number): number | undefined {
+  if (!previous) return undefined;
+  const delta = Math.round(((current - previous) / previous) * 100);
+  return delta !== 0 ? delta : undefined;
 }
 
 function computeAttendanceRate(records: Pick<AttendanceRecord, 'status'>[]) {

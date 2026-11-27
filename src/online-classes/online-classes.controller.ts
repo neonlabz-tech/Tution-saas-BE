@@ -37,7 +37,7 @@ export class OnlineClassesController {
     private readonly onlineClassesService: OnlineClassesService,
   ) {}
 
-  @Public()
+  @AllowedRoles(Role.ADMIN, Role.SUPER_ADMIN, Role.TEACHER, Role.STUDENT)
   @Get()
   @ApiOperation({ summary: 'Fetch all online classes with optional filtering' })
   @ApiResponse({
@@ -51,7 +51,7 @@ export class OnlineClassesController {
     return this.onlineClassesService.findAll(query);
   }
 
-  @Public()
+  @AllowedRoles(Role.ADMIN, Role.SUPER_ADMIN, Role.TEACHER, Role.STUDENT)
   @Get(':id')
   @ApiOperation({ summary: 'Fetch a single online class by ID' })
   @ApiParam({ name: 'id', description: 'Class ID (e.g. cls_123)' })

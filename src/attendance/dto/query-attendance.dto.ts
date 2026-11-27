@@ -1,5 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsOptional, IsString } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 import { AttendanceStatus } from '../../enums/status.enum.js';
 
 export class QueryAttendanceDto {
@@ -43,4 +44,19 @@ export class QueryAttendanceDto {
   @IsOptional()
   @IsString()
   method?: 'manual' | 'qr';
+
+  @ApiPropertyOptional({ description: 'Max number of records to return', default: 1000 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(5000)
+  limit?: number;
+
+  @ApiPropertyOptional({ description: 'Page number for pagination', default: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
 }

@@ -80,8 +80,8 @@ export class PaymentsController {
     return this.paymentsService.getStudentPayments(query);
   }
 
-  @Public()
   @Get()
+  @AllowedRoles(Role.ADMIN, Role.SUPER_ADMIN, Role.TEACHER, Role.STUDENT)
   @ApiOperation({
     summary: 'List payments with filtering, pagination, and enriched student details',
   })
@@ -106,8 +106,8 @@ export class PaymentsController {
     return this.paymentsService.listPayments(query);
   }
 
-  @Public()
   @Get(':id')
+  @AllowedRoles(Role.ADMIN, Role.SUPER_ADMIN, Role.TEACHER, Role.STUDENT)
   @ApiOperation({
     summary: 'Get payment details by ID, receiptNo, or MongoDB _id',
   })
