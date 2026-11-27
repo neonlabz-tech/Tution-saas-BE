@@ -36,13 +36,13 @@ export class NotificationsController {
     return this.notificationsService.create(dto);
   }
 
-  @Public()
+  @AllowedRoles(Role.ADMIN, Role.SUPER_ADMIN, Role.TEACHER)
   @Patch('read-all')
   markAllAsRead() {
     return this.notificationsService.markAllAsRead();
   }
 
-  @Public()
+  @AllowedRoles(Role.ADMIN, Role.SUPER_ADMIN, Role.TEACHER)
   @Patch(':id/read')
   markAsRead(@Param('id') id: string) {
     return this.notificationsService.markAsRead(id);

@@ -6,6 +6,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -27,6 +28,7 @@ import {
 } from '../students/schemas/student.schema.js';
 import { StudentsService } from '../students/students.service.js';
 import { User, type UserDocument } from '../users/schemas/user.schema.js';
+import { LoginRateLimiterService } from '../auth/login-rate-limiter.service.js';
 import type { StudentForgotPasswordDto } from './dto/student-forgot-password.dto.js';
 import type { StudentLoginDto } from './dto/student-login.dto.js';
 import type { StudentRegisterDto } from './dto/student-register.dto.js';
@@ -48,6 +50,9 @@ export class StudentAuthService {
     private readonly studentsService: StudentsService,
     @Inject(JwtService) private readonly jwtService: JwtService,
     @Inject(ConfigService) private readonly configService: ConfigService,
+    @Optional()
+    @Inject(LoginRateLimiterService)
+    private readonly rateLimiter: LoginRateLimiterService = new LoginRateLimiterService(),
   ) {}
 
   async checkAccount(
@@ -100,14 +105,14 @@ export class StudentAuthService {
       isSelfRegistered: true,
     });
 
-    // Create admin notification
+    // Create admin notification for verification
     await this.notificationModel
       .create({
         id: `notif_stu_reg_${created.id}`,
         type: 'student',
-        title: 'New Student Registration Pending Approval',
+        title: `Student Verification Required: ${dto.fullName.trim()}`,
         subtitle: `${dto.fullName.trim()} (${email}) has registered and is awaiting verification`,
-        link: `/dashboard/students?q=${encodeURIComponent(created.id)}`,
+        link: `/dashboard/students?status=pending`,
         read: false,
         recipientId: null,
       })
@@ -139,12 +144,18 @@ export class StudentAuthService {
     const email = dto.email.trim().toLowerCase();
     const cleanPassword = dto.password?.trim() || '';
 
+    const lockout = this.rateLimiter.checkLockout(email);
+    if (lockout.isLocked) {
+      this.rateLimiter.throwTooManyRequests(lockout.retryAfter);
+    }
+
     const user = await this.userModel
       .findOne({ email, role: Role.STUDENT })
       .select('+passwordHash')
       .exec();
 
     if (!user) {
+      this.rateLimiter.recordFailure(email);
       throw new UnauthorizedException('Invalid email or password');
     }
 
@@ -159,8 +170,11 @@ export class StudentAuthService {
       (await bcrypt.compare(dto.password, user.passwordHash));
 
     if (!valid) {
+      this.rateLimiter.recordFailure(email);
       throw new UnauthorizedException('Invalid email or password');
     }
+
+    this.rateLimiter.recordSuccess(email);
 
     const cfg = getAuthConfig(this.configService);
     let mustChangePassword = Boolean(user.mustChangePassword || user.lastLoginAt === null);

@@ -206,19 +206,25 @@ export class NotificationsService {
     students
       .filter(
         (s) =>
-          s.enrollmentDate &&
-          s.enrollmentDate >= tenDaysAgoISO &&
-          s.enrollmentDate <= today,
+          s.status === 'pending' ||
+          (s.enrollmentDate &&
+            s.enrollmentDate >= tenDaysAgoISO &&
+            s.enrollmentDate <= today),
       )
-      .slice(0, 5)
+      .slice(0, 8)
       .forEach((s) => {
         const itemId = `stu_reg_${s.id}`;
+        const isPending = s.status === 'pending';
         items.push({
           id: itemId,
           type: 'student',
-          title: `New Student Registration: ${s.fullName}`,
-          subtitle: `${s.enrollmentDate === today ? 'Enrolled today' : `Enrolled ${s.enrollmentDate}`} · ${s.batch || 'Batch'}`,
-          link: '/dashboard/students',
+          title: isPending
+            ? `Student Verification Required: ${s.fullName}`
+            : `New Student Registration: ${s.fullName}`,
+          subtitle: isPending
+            ? `Self-registered student awaiting admin verification · ${s.batch || 'Batch'}`
+            : `${s.enrollmentDate === today ? 'Enrolled today' : `Enrolled ${s.enrollmentDate}`} · ${s.batch || 'Batch'}`,
+          link: isPending ? '/dashboard/students?status=pending' : '/dashboard/students',
           read: readIds.has(itemId),
           persisted: false,
         });

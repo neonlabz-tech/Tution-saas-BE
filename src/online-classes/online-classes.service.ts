@@ -160,14 +160,34 @@ export class OnlineClassesService {
     const nextEnd = dto.end ?? existing.end;
     this.validateStartEnd(nextStart, nextEnd);
 
-    // Protection: Prevent rescheduling classes that have already ended
+    // Protection: Prevent editing or rescheduling classes that have already ended or completed
     const now = new Date().toISOString();
     const isRescheduling = dto.start !== undefined || dto.end !== undefined;
-    if (isRescheduling && existing.end < now) {
+    if (isRescheduling && (existing.status === ClassStatus.COMPLETED || existing.end < now)) {
       throw new BadRequestException('Cannot reschedule a class that has already ended');
+    }
+
+    const hasOtherDetailEdit =
+      dto.title !== undefined ||
+      dto.classType !== undefined ||
+      dto.hall !== undefined ||
+      dto.moduleId !== undefined ||
+      dto.teacherId !== undefined ||
+      dto.batch !== undefined ||
+      dto.link !== undefined ||
+      dto.description !== undefined;
+
+    if (hasOtherDetailEdit && (existing.status === ClassStatus.COMPLETED || existing.end < now)) {
+      throw new BadRequestException('Cannot edit a class that has already finished');
     }
     if (dto.end !== undefined && dto.end < now) {
       throw new BadRequestException('Cannot move class to a past time');
+    }
+    if (dto.status === ClassStatus.COMPLETED) {
+      const effectiveStart = dto.start ?? existing.start;
+      if (effectiveStart > now || new Date(effectiveStart).getTime() > Date.now()) {
+        throw new BadRequestException('Cannot mark a future class as completed before its date');
+      }
     }
 
     if (dto.title !== undefined) existing.title = dto.title.trim();

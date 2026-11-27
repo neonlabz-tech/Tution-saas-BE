@@ -2,6 +2,8 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  HttpException,
+  HttpStatus,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -155,6 +157,39 @@ describe('AuthService', () => {
       await expect(
         service.login({ email: 'amara@brightfuture.lk', password: 'Admin@123' }),
       ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('locks out and returns 429 after 5 failed login attempts', async () => {
+      const passwordHash = await bcrypt.hash('Admin@123', 4);
+      userModel.findOne.mockReturnValue(
+        mockChain({
+          id: 'USR-001',
+          email: 'locked@brightfuture.lk',
+          passwordHash,
+          isActive: true,
+        }),
+      );
+
+      // 5 consecutive failed attempts
+      for (let i = 0; i < 5; i++) {
+        await expect(
+          service.login({ email: 'locked@brightfuture.lk', password: 'WrongPassword' }),
+        ).rejects.toThrow(UnauthorizedException);
+      }
+
+      // 6th attempt should be locked out with HTTP 429
+      let thrownError: any;
+      try {
+        await service.login({ email: 'locked@brightfuture.lk', password: 'WrongPassword' });
+      } catch (err) {
+        thrownError = err;
+      }
+
+      expect(thrownError).toBeInstanceOf(HttpException);
+      expect(thrownError.getStatus()).toBe(HttpStatus.TOO_MANY_REQUESTS);
+      const resp = thrownError.getResponse();
+      expect(resp.retryAfter).toBeDefined();
+      expect(resp.message).toContain('Too many failed login attempts');
     });
   });
 
