@@ -1,4 +1,5 @@
 import { randomInt } from 'node:crypto';
+import bcrypt from 'bcryptjs';
 import {
   BadRequestException,
   ConflictException,
@@ -13,15 +14,18 @@ import {
   AttendanceRecord,
   type AttendanceRecordDocument,
 } from '../attendance/schemas/attendance.schema.js';
+import { Role } from '../enums/role.enum.js';
 import { AttendanceStatus, TxType } from '../enums/status.enum.js';
 import {
   Transaction,
   type TransactionDocument,
 } from '../finance/schemas/transaction.schema.js';
+import { MailService } from '../mail/mail.service.js';
 import {
   CourseModule,
   type CourseModuleDocument,
 } from '../modules/schemas/module.schema.js';
+import { User, type UserDocument } from '../users/schemas/user.schema.js';
 import type { CreateStudentDto } from './dto/create-student.dto.js';
 import type { StudentQueryDto } from './dto/student-query.dto.js';
 import type { UpdateStudentDto } from './dto/update-student.dto.js';
@@ -112,10 +116,14 @@ export class StudentsService {
     @InjectModel(Transaction.name)
     private readonly transactionModel: Model<TransactionDocument>,
 
+    @InjectModel(User.name)
+    private readonly userModel: Model<UserDocument>,
+
     @InjectConnection()
     private readonly connection: Connection,
 
     private readonly eventEmitter: EventEmitter2,
+    private readonly mailService: MailService,
   ) {}
 
   async findAll(query: StudentQueryDto) {
@@ -282,6 +290,36 @@ export class StudentsService {
       );
     }
 
+    // Auto-generate or use provided password for student login account
+    const isSelfRegistered = Boolean(dto.isSelfRegistered);
+    const generatedPassword =
+      dto.password?.trim() || `Stu@${randomInt(100000, 999999)}`;
+    const passwordHash = await bcrypt.hash(generatedPassword, 10);
+
+    const existingUser = await this.userModel.findOne({ email }).exec();
+    if (!existingUser) {
+      const studentUserId = await this.generateNextStudentUserId();
+      await this.userModel.create({
+        id: studentUserId,
+        fullName: createdStudent.fullName,
+        email: createdStudent.email,
+        passwordHash,
+        role: Role.STUDENT,
+        isActive: createdStudent.status !== 'pending',
+        studentId: createdStudent.id,
+        mustChangePassword: !isSelfRegistered,
+        lastLoginAt: null,
+      });
+    } else if (!existingUser.studentId) {
+      existingUser.studentId = createdStudent.id;
+      existingUser.passwordHash = passwordHash;
+      existingUser.mustChangePassword = !isSelfRegistered;
+      if (createdStudent.status !== 'pending') {
+        existingUser.isActive = true;
+      }
+      await existingUser.save();
+    }
+
     this.eventEmitter.emit(
       'student.registered',
       new StudentRegisteredEvent(
@@ -293,6 +331,8 @@ export class StudentsService {
         createdStudent.status,
         createdStudent.enrollmentDate,
         modules.map((m) => ({ id: m.id, code: m.code, name: m.name })),
+        isSelfRegistered ? undefined : generatedPassword,
+        isSelfRegistered,
       ),
     );
 
@@ -305,6 +345,7 @@ export class StudentsService {
       paidTotal: 0,
       outstanding: feeTotal,
       qrPayload: `EDUFLOW:${createdStudent.ref}`,
+      generatedPassword,
     };
   }
 
@@ -376,6 +417,26 @@ export class StudentsService {
         throw new NotFoundException(`Student "${id}" not found`);
       }
 
+      // Sync active state or email change to user credentials
+      if (dto.status !== undefined || dto.email !== undefined) {
+        const userUpdates: Record<string, unknown> = {};
+        if (dto.status !== undefined) {
+          userUpdates.isActive = dto.status === 'active';
+        }
+        if (dto.email !== undefined) {
+          userUpdates.email = updateFields.email;
+        }
+        await this.userModel.updateMany(
+          {
+            $or: [
+              { studentId: existing.id },
+              { email: existing.email, role: Role.STUDENT },
+            ],
+          },
+          { $set: userUpdates },
+        );
+      }
+
       return this.buildStudentDetail(updated);
     } catch (error) {
       if (this.isDuplicateKeyError(error, 'email')) {
@@ -397,6 +458,7 @@ export class StudentsService {
     }
 
     let deletedAttendanceCount = 0;
+    let deletedUserCount = 0;
     const session = await this.connection.startSession();
 
     try {
@@ -407,6 +469,18 @@ export class StudentsService {
           { session },
         );
         deletedAttendanceCount = attendanceRes.deletedCount ?? 0;
+
+        // Invalidate & delete all login credentials associated with the deleted student
+        const userRes = await this.userModel.deleteMany(
+          {
+            $or: [
+              { studentId: existing.id },
+              { email: existing.email, role: Role.STUDENT },
+            ],
+          },
+          { session },
+        );
+        deletedUserCount = userRes.deletedCount ?? 0;
       });
     } finally {
       await session.endSession();
@@ -416,6 +490,7 @@ export class StudentsService {
       deleted: true,
       id: existing.id,
       deletedAttendanceCount,
+      deletedUserCount,
     };
   }
 
@@ -768,6 +843,63 @@ export class StudentsService {
       updatedCount: res.modifiedCount,
       targetBatch: cleanBatch,
     };
+  }
+
+  async verifyStudent(id: string) {
+    const student = await this.studentModel
+      .findOne(this.buildStudentIdFilter(id))
+      .exec();
+
+    if (!student) {
+      throw new NotFoundException(`Student "${id}" not found`);
+    }
+
+    student.status = 'active';
+    await student.save();
+
+    // Activate the student user account
+    const user = await this.userModel
+      .findOne({
+        $or: [
+          { studentId: student.id },
+          { email: student.email, role: Role.STUDENT },
+        ],
+      })
+      .exec();
+
+    if (user) {
+      user.isActive = true;
+      user.studentId = student.id;
+      await user.save();
+    }
+
+    // Send verification confirmation email
+    await this.mailService.sendStudentVerificationEmail({
+      to: student.email,
+      fullName: student.fullName,
+      studentId: student.id,
+    });
+
+    const enriched = await this.buildStudentDetail(student.toObject());
+    return {
+      message: 'Student verified and activated successfully',
+      student: enriched,
+    };
+  }
+
+  private async generateNextStudentUserId(): Promise<string> {
+    const existing = await this.userModel
+      .find({ id: /^STU-USR-\d+$/ }, { id: 1 })
+      .lean<Pick<User, 'id'>[]>()
+      .exec();
+
+    const max = existing.reduce((mx, u) => {
+      const parts = u.id.split('-');
+      const num = Number(parts[2]) || 0;
+      return Math.max(mx, num);
+    }, 0);
+
+    return `STU-USR-${String(max + 1).padStart(3, '0')}`;
   }
 
   private escapeRegex(value: string): string {

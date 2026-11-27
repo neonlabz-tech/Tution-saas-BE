@@ -69,6 +69,8 @@ export const baseStudentSchema = z.object({
 export const createStudentSchema = baseStudentSchema.extend({
   enrollmentDate: isoDateSchema.default(() => todayIsoDate()),
   status: studentStatusSchema.default('pending'),
+  password: z.string().trim().min(6, 'Password must be at least 6 characters').optional(),
+  isSelfRegistered: z.boolean().optional(),
 });
 
 export type CreateStudentDto = z.infer<typeof createStudentSchema>;

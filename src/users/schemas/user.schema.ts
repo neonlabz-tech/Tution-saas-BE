@@ -36,15 +36,12 @@ export class User {
 
   @Prop({ type: Date, default: null, select: false })
   resetPasswordExpires?: Date | null;
+
+  @Prop({ type: String, default: null, index: true })
+  studentId?: string | null;
+
+  @Prop({ type: Boolean, default: false })
+  mustChangePassword?: boolean;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
-
-// Database-level enforcement: strictly allow only ONE administrator document in MongoDB
-UserSchema.index(
-  { role: 1 },
-  {
-    unique: true,
-    partialFilterExpression: { role: Role.ADMIN },
-  },
-);

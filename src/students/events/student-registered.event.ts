@@ -8,5 +8,7 @@ export class StudentRegisteredEvent {
     public readonly status: string,
     public readonly enrollmentDate: string,
     public readonly modules: Array<{ id: string; code: string; name: string }>,
+    public readonly temporaryPassword?: string,
+    public readonly isSelfRegistered?: boolean,
   ) {}
 }

@@ -34,7 +34,7 @@ class UploadBase64Dto {
 }
 
 @Controller('storage')
-@AllowedRoles(Role.ADMIN, Role.SUPER_ADMIN, Role.TEACHER)
+@AllowedRoles(Role.ADMIN, Role.SUPER_ADMIN, Role.TEACHER, Role.STUDENT)
 export class StorageController {
   constructor(
     @Inject(StorageService) private readonly storageService: StorageService,
@@ -44,13 +44,18 @@ export class StorageController {
   @UseInterceptors(
     FileInterceptor('file', {
       limits: {
-        fileSize: 5 * 1024 * 1024, // 5 MB max
+        fileSize: 10 * 1024 * 1024, // 10 MB max
       },
       fileFilter: (_req, file, cb) => {
-        if (!file.mimetype.match(/\/(jpg|jpeg|png|webp|svg\+xml)$/)) {
+        if (
+          !file.mimetype.match(
+            /\/(jpg|jpeg|png|webp|svg\+xml|pdf|msword|vnd\.openxmlformats-officedocument\.wordprocessingml\.document|zip|octet-stream)$/i,
+          ) &&
+          !file.originalname.match(/\.(pdf|docx?|zip|png|jpe?g|webp)$/i)
+        ) {
           cb(
             new BadRequestException(
-              'Unsupported file type. Please upload a PNG, JPG, WebP, or SVG image.',
+              'Unsupported file type. Please upload a PDF, Word document, ZIP archive, or image.',
             ),
             false,
           );
@@ -65,7 +70,7 @@ export class StorageController {
     @Body('folder') folder?: string,
   ): Promise<UploadResult> {
     if (!file) {
-      throw new BadRequestException('Image file is required');
+      throw new BadRequestException('File is required');
     }
     return this.storageService.uploadFile(file, folder || 'uploads');
   }
