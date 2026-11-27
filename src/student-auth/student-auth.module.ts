@@ -10,6 +10,7 @@ import {
 import { Student, StudentSchema } from '../students/schemas/student.schema.js';
 import { StudentsModule } from '../students/students.module.js';
 import { User, UserSchema } from '../users/schemas/user.schema.js';
+import { LoginRateLimiterService } from '../auth/login-rate-limiter.service.js';
 import { StudentJwtGuard } from './guards/student-jwt.guard.js';
 import { StudentAuthController } from './student-auth.controller.js';
 import { StudentAuthService } from './student-auth.service.js';
@@ -30,7 +31,7 @@ import { StudentAuthService } from './student-auth.service.js';
     ]),
   ],
   controllers: [StudentAuthController],
-  providers: [StudentAuthService, StudentJwtGuard],
+  providers: [StudentAuthService, StudentJwtGuard, LoginRateLimiterService],
   exports: [StudentAuthService, StudentJwtGuard],
 })
 export class StudentAuthModule {}

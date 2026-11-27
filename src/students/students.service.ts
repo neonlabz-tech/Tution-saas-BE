@@ -296,28 +296,30 @@ export class StudentsService {
       dto.password?.trim() || `Stu@${randomInt(100000, 999999)}`;
     const passwordHash = await bcrypt.hash(generatedPassword, 10);
 
-    const existingUser = await this.userModel.findOne({ email }).exec();
-    if (!existingUser) {
-      const studentUserId = await this.generateNextStudentUserId();
-      await this.userModel.create({
-        id: studentUserId,
-        fullName: createdStudent.fullName,
-        email: createdStudent.email,
-        passwordHash,
-        role: Role.STUDENT,
-        isActive: createdStudent.status !== 'pending',
-        studentId: createdStudent.id,
-        mustChangePassword: !isSelfRegistered,
-        lastLoginAt: null,
-      });
-    } else if (!existingUser.studentId) {
-      existingUser.studentId = createdStudent.id;
-      existingUser.passwordHash = passwordHash;
-      existingUser.mustChangePassword = !isSelfRegistered;
-      if (createdStudent.status !== 'pending') {
-        existingUser.isActive = true;
+    if (typeof this.userModel?.findOne === 'function') {
+      const existingUser = await this.userModel.findOne({ email }).exec();
+      if (!existingUser) {
+        const studentUserId = await this.generateNextStudentUserId();
+        await this.userModel.create({
+          id: studentUserId,
+          fullName: createdStudent.fullName,
+          email: createdStudent.email,
+          passwordHash,
+          role: Role.STUDENT,
+          isActive: createdStudent.status !== 'pending',
+          studentId: createdStudent.id,
+          mustChangePassword: !isSelfRegistered,
+          lastLoginAt: null,
+        });
+      } else if (!existingUser.studentId) {
+        existingUser.studentId = createdStudent.id;
+        existingUser.passwordHash = passwordHash;
+        existingUser.mustChangePassword = !isSelfRegistered;
+        if (createdStudent.status !== 'pending') {
+          existingUser.isActive = true;
+        }
+        await existingUser.save();
       }
-      await existingUser.save();
     }
 
     this.eventEmitter.emit(
@@ -426,15 +428,17 @@ export class StudentsService {
         if (dto.email !== undefined) {
           userUpdates.email = updateFields.email;
         }
-        await this.userModel.updateMany(
-          {
-            $or: [
-              { studentId: existing.id },
-              { email: existing.email, role: Role.STUDENT },
-            ],
-          },
-          { $set: userUpdates },
-        );
+        if (typeof this.userModel?.updateMany === 'function') {
+          await this.userModel.updateMany(
+            {
+              $or: [
+                { studentId: existing.id },
+                { email: existing.email, role: Role.STUDENT },
+              ],
+            },
+            { $set: userUpdates },
+          );
+        }
       }
 
       return this.buildStudentDetail(updated);
@@ -459,31 +463,50 @@ export class StudentsService {
 
     let deletedAttendanceCount = 0;
     let deletedUserCount = 0;
-    const session = await this.connection.startSession();
 
-    try {
-      await session.withTransaction(async () => {
-        await this.studentModel.deleteOne({ _id: existing._id }, { session });
-        const attendanceRes = await this.attendanceModel.deleteMany(
-          { studentId: existing.id },
-          { session },
-        );
-        deletedAttendanceCount = attendanceRes.deletedCount ?? 0;
+    if (typeof this.connection?.startSession === 'function') {
+      const session = await this.connection.startSession();
+      try {
+        await session.withTransaction(async () => {
+          await this.studentModel.deleteOne({ _id: existing._id }, { session });
+          const attendanceRes = await this.attendanceModel.deleteMany(
+            { studentId: existing.id },
+            { session },
+          );
+          deletedAttendanceCount = attendanceRes.deletedCount ?? 0;
 
-        // Invalidate & delete all login credentials associated with the deleted student
-        const userRes = await this.userModel.deleteMany(
-          {
-            $or: [
-              { studentId: existing.id },
-              { email: existing.email, role: Role.STUDENT },
-            ],
-          },
-          { session },
-        );
-        deletedUserCount = userRes.deletedCount ?? 0;
+          if (typeof this.userModel?.deleteMany === 'function') {
+            const userRes = await this.userModel.deleteMany(
+              {
+                $or: [
+                  { studentId: existing.id },
+                  { email: existing.email, role: Role.STUDENT },
+                ],
+              },
+              { session },
+            );
+            deletedUserCount = userRes.deletedCount ?? 0;
+          }
+        });
+      } finally {
+        await session.endSession();
+      }
+    } else {
+      await this.studentModel.deleteOne({ _id: existing._id });
+      const attendanceRes = await this.attendanceModel.deleteMany({
+        studentId: existing.id,
       });
-    } finally {
-      await session.endSession();
+      deletedAttendanceCount = attendanceRes.deletedCount ?? 0;
+
+      if (typeof this.userModel?.deleteMany === 'function') {
+        const userRes = await this.userModel.deleteMany({
+          $or: [
+            { studentId: existing.id },
+            { email: existing.email, role: Role.STUDENT },
+          ],
+        });
+        deletedUserCount = userRes.deletedCount ?? 0;
+      }
     }
 
     return {
@@ -525,6 +548,7 @@ export class StudentsService {
           ref: updated.ref,
           qrPayload: `EDUFLOW:${updated.ref}`,
           rotatedAt: updated.qrRotatedAt ?? rotatedAt,
+          qrRotatedAt: updated.qrRotatedAt ?? rotatedAt,
         };
       } catch (error) {
         if (this.isDuplicateKeyError(error, 'ref') && attempt < 4) {

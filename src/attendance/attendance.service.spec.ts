@@ -20,6 +20,7 @@ describe('AttendanceService', () => {
     lean: vi.fn().mockReturnThis(),
     sort: vi.fn().mockReturnThis(),
     select: vi.fn().mockReturnThis(),
+    limit: vi.fn().mockReturnThis(),
     exec: vi.fn().mockResolvedValue(result),
   });
 
@@ -59,7 +60,7 @@ describe('AttendanceService', () => {
     };
 
     studentModel = {
-      find: vi.fn(),
+      find: vi.fn().mockReturnValue(mockQuery([])),
       findOne: vi.fn(),
     };
 
@@ -230,6 +231,52 @@ describe('AttendanceService', () => {
       expect(existingDoc.save).toHaveBeenCalled();
     });
 
+    it('marks attendance correctly for either subject when student is enrolled in multiple subjects', async () => {
+      const multiSubjectStudent = {
+        ...mockStudent,
+        id: 'STU-2026-002',
+        fullName: 'Dual Subject Student',
+        moduleIds: ['mod_acc', 'mod_ict'],
+      };
+      const ictModule = {
+        id: 'mod_ict',
+        code: 'ICT-106',
+        name: 'ICT & Programming',
+        fee: 78000,
+      };
+      studentModel.findOne.mockReturnValue(mockQuery(multiSubjectStudent));
+      moduleModel.findOne.mockReturnValue(mockQuery(ictModule));
+      attendanceModel.findOne.mockReturnValue({
+        exec: vi.fn().mockResolvedValue(null),
+      });
+      attendanceModel.create.mockResolvedValue({
+        id: 'att_STU-2026-002_mod_ict_2026-11-27',
+        studentId: 'STU-2026-002',
+        moduleId: 'mod_ict',
+        date: '2026-11-27',
+        status: AttendanceStatus.PRESENT,
+        method: 'qr',
+      });
+
+      const res = await service.markQrAttendance({
+        code: 'STU-2026-002',
+        moduleId: 'mod_ict',
+        date: '2026-11-27',
+        status: AttendanceStatus.PRESENT,
+      });
+
+      expect(res.success).toBe(true);
+      expect(res.module.id).toBe('mod_ict');
+      expect(res.module.name).toBe('ICT & Programming');
+      expect(attendanceModel.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          studentId: 'STU-2026-002',
+          moduleId: 'mod_ict',
+          method: 'qr',
+        }),
+      );
+    });
+
     it('rejects if student is not enrolled in the module', async () => {
       studentModel.findOne.mockReturnValue(mockQuery(mockStudent));
       moduleModel.findOne.mockReturnValue(
@@ -338,6 +385,65 @@ describe('AttendanceService', () => {
       expect(res.unmarkedCount).toBe(1);
       expect(res.markedCount).toBe(0);
       expect(res.rows[0].record).toBeNull();
+    });
+
+    it('filters out orphan module references and displays module names with each student once', async () => {
+      const studentWithOrphan = {
+        id: 'STU-2026-002',
+        fullName: 'Bhargav',
+        email: 'bhargav@example.com',
+        batch: '2026',
+        status: 'active',
+        moduleIds: ['Mod_3c49ac55', 'Mod_acc'],
+      };
+      const studentDilDil = {
+        id: 'STU-2026-003',
+        fullName: 'dil dil',
+        email: 'dildil@example.com',
+        batch: '2026',
+        status: 'active',
+        moduleIds: ['Mod_3c49ac55', 'Mod_ict'],
+      };
+      const accModule = {
+        id: 'mod_acc',
+        code: 'ACC-107',
+        name: 'Accounting',
+        fee: 60000,
+      };
+      const ictModule = {
+        id: 'mod_ict',
+        code: 'ICT-106',
+        name: 'ICT & Programming',
+        fee: 78000,
+      };
+
+      studentModel.find.mockReturnValue(mockQuery([studentWithOrphan, studentDilDil]));
+      moduleModel.find.mockReturnValue(mockQuery([accModule, ictModule]));
+      attendanceModel.find.mockReturnValue(mockQuery([]));
+
+      const res = await service.getDailyRoster({
+        date: '2026-11-27',
+        moduleId: 'all',
+      });
+
+      expect(res.totalEntries).toBe(2);
+      expect(res.rows.length).toBe(2);
+
+      const bhargavRow = res.rows.find((r) => r.student.fullName === 'Bhargav');
+      expect(bhargavRow).toBeDefined();
+      expect(bhargavRow!.module.name).toBe('Accounting');
+      expect(bhargavRow!.module.name).not.toBe('Mod_3c49ac55');
+      expect(bhargavRow!.module.name).not.toBe('Mod_acc');
+
+      const dildilRow = res.rows.find((r) => r.student.fullName === 'dil dil');
+      expect(dildilRow).toBeDefined();
+      expect(dildilRow!.module.name).toBe('ICT & Programming');
+      expect(dildilRow!.module.name).not.toBe('Mod_3c49ac55');
+      expect(dildilRow!.module.name).not.toBe('Mod_ict');
+
+      // Verify each student appears only once
+      const studentIds = res.rows.map((r) => r.student.id);
+      expect(studentIds).toEqual(['STU-2026-002', 'STU-2026-003']);
     });
   });
 

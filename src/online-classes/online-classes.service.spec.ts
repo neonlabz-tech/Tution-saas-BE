@@ -265,6 +265,25 @@ describe('OnlineClassesService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
+    it('throws BadRequestException when attempting to mark a future class completed early', async () => {
+      const futureDoc = {
+        ...sampleClass,
+        start: '2099-11-20T10:00',
+        end: '2099-11-20T11:30',
+        save: vi.fn(),
+      };
+
+      onlineClassModel.findOne.mockReturnValue({
+        exec: vi.fn().mockResolvedValue(futureDoc),
+      });
+
+      await expect(
+        service.update('cls_1', {
+          status: ClassStatus.COMPLETED,
+        }),
+      ).rejects.toThrow('Cannot mark a future class as completed before its date');
+    });
+
     it('throws NotFoundException when updating non-existent class', async () => {
       onlineClassModel.findOne.mockReturnValue({
         exec: vi.fn().mockResolvedValue(null),

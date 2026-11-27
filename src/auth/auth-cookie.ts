@@ -20,10 +20,11 @@ export function parseDurationToMs(duration: string): number {
 /** Returns consistent cookie attributes for setting and clearing the auth cookie. */
 export function getAuthCookieOptions(maxAgeMs?: number): CookieOptions {
   const isProd = process.env.NODE_ENV === 'production';
+  const forceSecure = process.env.COOKIE_SECURE === 'true';
   return {
     httpOnly: true,
     sameSite: 'lax',
-    secure: isProd,
+    secure: isProd || forceSecure,
     path: '/',
     ...(typeof maxAgeMs === 'number' ? { maxAge: maxAgeMs } : {}),
   };

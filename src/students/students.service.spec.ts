@@ -14,7 +14,12 @@ function createChainableQuery<T>(result: T) {
     sort: vi.fn().mockReturnThis(),
     skip: vi.fn().mockReturnThis(),
     limit: vi.fn().mockReturnThis(),
-    lean: vi.fn().mockResolvedValue(result),
+    exec: vi.fn().mockResolvedValue(result),
+    lean: vi.fn().mockReturnValue(
+      Object.assign(Promise.resolve(result), {
+        exec: vi.fn().mockResolvedValue(result),
+      }),
+    ),
   };
   return query;
 }
@@ -120,12 +125,21 @@ describe('StudentsService', () => {
       emit: vi.fn(),
     };
 
+    const userModel = {
+      find: vi.fn().mockReturnValue(createChainableQuery([])),
+      findOne: vi.fn().mockReturnValue({ exec: vi.fn().mockResolvedValue(null) }),
+      create: vi.fn().mockResolvedValue({}),
+      updateMany: vi.fn().mockResolvedValue({}),
+      deleteMany: vi.fn().mockResolvedValue({ deletedCount: 1 }),
+    };
+
     service = new StudentsService(
       studentModel as never,
       counterModel as never,
       moduleModel as never,
       attendanceModel as never,
       transactionModel as never,
+      userModel as never,
       connection as never,
       eventEmitter as never,
     );
@@ -552,6 +566,7 @@ describe('StudentsService', () => {
         deleted: true,
         id: 'STU-2026-001',
         deletedAttendanceCount: 4,
+        deletedUserCount: 1,
       });
     });
 

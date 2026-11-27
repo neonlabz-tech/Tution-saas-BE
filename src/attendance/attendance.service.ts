@@ -194,6 +194,27 @@ export interface BulkMarkUnmarkedResponse {
   records: AttendanceRecord[];
 }
 
+const KNOWN_MODULE_NAMES: Record<string, string> = {
+  mod_acc: 'Accounting',
+  acc: 'Accounting',
+  mod_ict: 'ICT & Programming',
+  ict: 'ICT & Programming',
+  mod_mth: 'Combined Mathematics',
+  mth: 'Combined Mathematics',
+  mod_phy: 'Physics',
+  phy: 'Physics',
+  mod_che: 'Chemistry',
+  che: 'Chemistry',
+  mod_bio: 'Biology',
+  bio: 'Biology',
+  mod_eng: 'General English',
+  eng: 'General English',
+  mod_bus: 'Business Studies',
+  bus: 'Business Studies',
+  mod_eco: 'Economics',
+  eco: 'Economics',
+};
+
 @Injectable()
 export class AttendanceService {
   private readonly logger = new Logger(AttendanceService.name);
@@ -212,6 +233,33 @@ export class AttendanceService {
 
   private escapeRegex(str: string): string {
     return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  private formatModuleName(nameOrId: string, code?: string): string {
+    if (!nameOrId) return 'General Module';
+    const clean = nameOrId.trim();
+    const lower = clean.toLowerCase();
+    if (KNOWN_MODULE_NAMES[lower]) {
+      return KNOWN_MODULE_NAMES[lower];
+    }
+    const stripped = clean.replace(/^(mod_|module_)/i, '');
+    const strippedLower = stripped.toLowerCase();
+    if (KNOWN_MODULE_NAMES[strippedLower]) {
+      return KNOWN_MODULE_NAMES[strippedLower];
+    }
+    if (code) {
+      const codeLower = code.trim().toLowerCase();
+      if (KNOWN_MODULE_NAMES[codeLower]) {
+        return KNOWN_MODULE_NAMES[codeLower];
+      }
+    }
+    if (/^[0-9a-f]{6,}$/i.test(stripped)) {
+      return 'General Module';
+    }
+    if (clean.startsWith('Mod_') || clean.startsWith('mod_')) {
+      return stripped ? stripped.charAt(0).toUpperCase() + stripped.slice(1) : 'General Module';
+    }
+    return clean;
   }
 
   private normalizeCode(code: string): string {
@@ -269,11 +317,13 @@ export class AttendanceService {
     }
 
     // 3. For partial name search (>= 3 chars), search across students
-    const partialMatches = await this.studentModel
-      .find({ fullName: new RegExp(escapedClean, 'i') })
-      .limit(6)
-      .lean<Student[]>()
-      .exec();
+    const findQuery = this.studentModel.find({ fullName: new RegExp(escapedClean, 'i') });
+    const partialMatches =
+      (typeof findQuery?.limit === 'function'
+        ? await findQuery.limit(6).lean<Student[]>().exec()
+        : typeof findQuery?.lean === 'function'
+        ? await findQuery.lean<Student[]>().exec()
+        : await findQuery?.exec?.()) ?? [];
 
     if (partialMatches.length === 0) {
       throw new NotFoundException('No student matches the provided name, ID, or QR code');
@@ -308,8 +358,15 @@ export class AttendanceService {
     let existingAttendance: AttendanceRecord | undefined = undefined;
 
     if (dto.moduleId) {
+      const escapedMid = this.escapeRegex(dto.moduleId);
       const targetModule = await this.moduleModel
-        .findOne({ id: dto.moduleId })
+        .findOne({
+          $or: [
+            { id: dto.moduleId },
+            { id: new RegExp(`^${escapedMid}$`, 'i') },
+            { code: new RegExp(`^${escapedMid}$`, 'i') },
+          ],
+        })
         .lean<CourseModule>()
         .exec();
 
@@ -317,7 +374,14 @@ export class AttendanceService {
         throw new NotFoundException(`Module with ID "${dto.moduleId}" not found`);
       }
 
-      enrolledInModule = student.moduleIds.includes(dto.moduleId);
+      enrolledInModule = student.moduleIds?.some(
+        (mid) =>
+          mid === targetModule.id ||
+          mid.toLowerCase() === targetModule.id.toLowerCase() ||
+          (Boolean(dto.moduleId) &&
+            (mid === dto.moduleId || mid.toLowerCase() === dto.moduleId!.toLowerCase())),
+      );
+
       if (!enrolledInModule) {
         return {
           valid: false,
@@ -338,15 +402,44 @@ export class AttendanceService {
         };
       }
 
-      const id = `att_${student.id}_${dto.moduleId}_${today}`;
-      const record = await this.attendanceModel.findOne({ id }).lean<AttendanceRecord>().exec();
+      const id = `att_${student.id}_${targetModule.id}_${today}`;
+      const record = await this.attendanceModel
+        .findOne({
+          $or: [
+            { id },
+            {
+              studentId: student.id,
+              moduleId: { $in: [targetModule.id, dto.moduleId] },
+              date: today,
+            },
+          ],
+        })
+        .lean<AttendanceRecord>()
+        .exec();
       alreadyMarked = !!record;
       existingAttendance = record ?? undefined;
+    } else {
+      const query = this.attendanceModel.findOne({
+        studentId: student.id,
+        date: today,
+      });
+      if (query && typeof query.lean === 'function') {
+        const existingAny = await query.lean<AttendanceRecord>().exec();
+        if (existingAny) {
+          alreadyMarked = true;
+          existingAttendance = existingAny;
+        }
+      }
     }
+
+    const verificationMsg =
+      alreadyMarked && existingAttendance
+        ? `Student "${student.fullName}" already marked ${existingAttendance.status} via ${existingAttendance.method ?? 'manual'}`
+        : 'Student verified successfully';
 
     return {
       valid: true,
-      message: 'Student verified successfully',
+      message: verificationMsg,
       student: {
         id: student.id,
         ref: student.ref,
@@ -420,8 +513,15 @@ export class AttendanceService {
       );
     }
 
+    const escapedMid = this.escapeRegex(dto.moduleId);
     const targetModule = await this.moduleModel
-      .findOne({ id: dto.moduleId })
+      .findOne({
+        $or: [
+          { id: dto.moduleId },
+          { id: new RegExp(`^${escapedMid}$`, 'i') },
+          { code: new RegExp(`^${escapedMid}$`, 'i') },
+        ],
+      })
       .lean<CourseModule>()
       .exec();
 
@@ -429,7 +529,15 @@ export class AttendanceService {
       throw new NotFoundException(`Module with ID "${dto.moduleId}" not found`);
     }
 
-    if (!student.moduleIds.includes(dto.moduleId)) {
+    const isEnrolled = student.moduleIds?.some(
+      (mid) =>
+        mid === targetModule.id ||
+        mid.toLowerCase() === targetModule.id.toLowerCase() ||
+        mid === dto.moduleId ||
+        mid.toLowerCase() === dto.moduleId.toLowerCase(),
+    );
+
+    if (!isEnrolled) {
       throw new BadRequestException(
         `Student "${student.fullName}" (${student.id}) is not enrolled in module "${targetModule.name}" (${targetModule.code})`,
       );
@@ -437,7 +545,7 @@ export class AttendanceService {
 
     const date = dto.date ?? new Date().toISOString().slice(0, 10);
     const status = dto.status ?? AttendanceStatus.PRESENT;
-    const id = `att_${student.id}_${dto.moduleId}_${date}`;
+    const id = `att_${student.id}_${targetModule.id}_${date}`;
 
     const existing = await this.attendanceModel.findOne({ id }).exec();
     let isNew = false;
@@ -453,7 +561,7 @@ export class AttendanceService {
       const created = await this.attendanceModel.create({
         id,
         studentId: student.id,
-        moduleId: dto.moduleId,
+        moduleId: targetModule.id,
         date,
         status,
         method: 'qr',
@@ -491,8 +599,15 @@ export class AttendanceService {
       );
     }
 
+    const escapedMid = this.escapeRegex(dto.moduleId);
     const targetModule = await this.moduleModel
-      .findOne({ id: dto.moduleId })
+      .findOne({
+        $or: [
+          { id: dto.moduleId },
+          { id: new RegExp(`^${escapedMid}$`, 'i') },
+          { code: new RegExp(`^${escapedMid}$`, 'i') },
+        ],
+      })
       .lean<CourseModule>()
       .exec();
 
@@ -500,7 +615,15 @@ export class AttendanceService {
       throw new NotFoundException(`Module with ID "${dto.moduleId}" not found`);
     }
 
-    if (!student.moduleIds.includes(dto.moduleId)) {
+    const isEnrolled = student.moduleIds?.some(
+      (mid) =>
+        mid === targetModule.id ||
+        mid.toLowerCase() === targetModule.id.toLowerCase() ||
+        mid === dto.moduleId ||
+        mid.toLowerCase() === dto.moduleId.toLowerCase(),
+    );
+
+    if (!isEnrolled) {
       throw new BadRequestException(
         `Student "${student.fullName}" is not enrolled in module "${targetModule.name}" (${targetModule.code})`,
       );
@@ -509,7 +632,7 @@ export class AttendanceService {
     const date = dto.date ?? new Date().toISOString().slice(0, 10);
     const status = dto.status ?? AttendanceStatus.PRESENT;
     const method = dto.method ?? 'manual';
-    const id = `att_${student.id}_${dto.moduleId}_${date}`;
+    const id = `att_${student.id}_${targetModule.id}_${date}`;
 
     const existing = await this.attendanceModel.findOne({ id }).exec();
     let isNew = false;
@@ -528,7 +651,7 @@ export class AttendanceService {
       const created = await this.attendanceModel.create({
         id,
         studentId: student.id,
-        moduleId: dto.moduleId,
+        moduleId: targetModule.id,
         date,
         status,
         method,
@@ -612,7 +735,17 @@ export class AttendanceService {
     const students = await this.studentModel.find(studentFilter).lean<Student[]>().exec();
 
     const modules = await this.moduleModel.find({}).lean<CourseModule[]>().exec();
-    const moduleMap = new Map<string, CourseModule>(modules.map((m) => [m.id, m]));
+    const moduleMap = new Map<string, CourseModule>();
+    for (const m of modules) {
+      if (m.id) {
+        moduleMap.set(m.id, m);
+        moduleMap.set(m.id.toLowerCase(), m);
+      }
+      if (m.code) {
+        moduleMap.set(m.code, m);
+        moduleMap.set(m.code.toLowerCase(), m);
+      }
+    }
 
     const attFilter: Record<string, unknown> = { date };
     if (query.moduleId && query.moduleId !== 'all') {
@@ -625,14 +758,62 @@ export class AttendanceService {
     const counts = { present: 0, absent: 0, late: 0, excused: 0 };
     let markedCount = 0;
 
+    const isAllModules = !query.moduleId || query.moduleId === 'all';
+    const seenStudentIds = new Set<string>();
+
     for (const student of students) {
-      for (const mid of student.moduleIds) {
-        if (query.moduleId && query.moduleId !== 'all' && mid !== query.moduleId) {
+      if (isAllModules && seenStudentIds.has(student.id)) {
+        continue;
+      }
+
+      const validModules: CourseModule[] = [];
+      for (const mid of student.moduleIds || []) {
+        if (!isAllModules && query.moduleId && mid !== query.moduleId && mid.toLowerCase() !== query.moduleId.toLowerCase()) {
           continue;
         }
-        const mod = moduleMap.get(mid);
+
+        const isHexOrphan = /^[0-9a-f]{6,}$/i.test(mid.replace(/^mod_/i, ''));
+        let mod = moduleMap.get(mid) ?? moduleMap.get(mid.toLowerCase());
         if (!mod) {
-          continue;
+          const lower = mid.toLowerCase();
+          const knownName = KNOWN_MODULE_NAMES[lower] ?? KNOWN_MODULE_NAMES[mid.replace(/^mod_/i, '').toLowerCase()];
+          if (knownName) {
+            mod = {
+              id: mid,
+              code: mid.replace(/^mod_/i, '').toUpperCase(),
+              name: knownName,
+            } as CourseModule;
+          }
+        }
+
+        if (mod && !isHexOrphan) {
+          const resolvedName = this.formatModuleName(mod.name || mod.id, mod.code);
+          validModules.push({
+            ...mod,
+            name: resolvedName,
+          });
+        }
+      }
+
+      if (validModules.length === 0 && (student.moduleIds || []).length > 0 && isAllModules) {
+        const firstMid = student.moduleIds[0];
+        validModules.push({
+          id: firstMid,
+          code: 'GEN',
+          name: this.formatModuleName(firstMid),
+        } as CourseModule);
+      }
+
+      if (validModules.length === 0) {
+        continue;
+      }
+
+      // If query is for 'all' modules, ensure each student appears once per record
+      const modulesToUse = isAllModules ? [validModules[0]] : validModules;
+
+      for (const mod of modulesToUse) {
+        if (isAllModules && seenStudentIds.has(student.id)) {
+          break;
         }
 
         if (searchTerm) {
@@ -651,7 +832,8 @@ export class AttendanceService {
             continue;
           }
         }
-        const key = `att_${student.id}_${mid}_${date}`;
+
+        const key = `att_${student.id}_${mod.id}_${date}`;
         const record = recordMap.get(key) ?? null;
 
         if (record) {
@@ -679,6 +861,8 @@ export class AttendanceService {
           },
           record,
         });
+
+        seenStudentIds.add(student.id);
       }
     }
 

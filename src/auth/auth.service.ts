@@ -7,6 +7,7 @@ import {
   Logger,
   NotFoundException,
   type OnModuleInit,
+  Optional,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -28,6 +29,7 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto.js';
 import { LoginDto } from './dto/login.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
 import { ResetPasswordDto } from './dto/reset-password.dto.js';
+import { LoginRateLimiterService } from './login-rate-limiter.service.js';
 import { MailService } from './mail.service.js';
 
 export interface LoginConfigResponse {
@@ -68,6 +70,9 @@ export class AuthService implements OnModuleInit {
     @Inject(JwtService) private readonly jwtService: JwtService,
     @Inject(ConfigService) private readonly configService: ConfigService,
     @Inject(MailService) private readonly mailService: MailService,
+    @Optional()
+    @Inject(LoginRateLimiterService)
+    private readonly rateLimiter: LoginRateLimiterService = new LoginRateLimiterService(),
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -138,12 +143,19 @@ export class AuthService implements OnModuleInit {
 
   async login(dto: LoginDto): Promise<AuthTokenResponse> {
     const normalizedEmail = dto.email.trim().toLowerCase();
+
+    const lockout = this.rateLimiter.checkLockout(normalizedEmail);
+    if (lockout.isLocked) {
+      this.rateLimiter.throwTooManyRequests(lockout.retryAfter);
+    }
+
     const user = await this.userModel
       .findOne({ email: normalizedEmail })
       .select('+passwordHash')
       .exec();
 
     if (!user) {
+      this.rateLimiter.recordFailure(normalizedEmail);
       throw new UnauthorizedException('Invalid email or password');
     }
 
@@ -153,8 +165,11 @@ export class AuthService implements OnModuleInit {
 
     const valid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!valid) {
+      this.rateLimiter.recordFailure(normalizedEmail);
       throw new UnauthorizedException('Invalid email or password');
     }
+
+    this.rateLimiter.recordSuccess(normalizedEmail);
 
     user.lastLoginAt = new Date();
     await user.save();

@@ -30,10 +30,11 @@ import {
 
 export function getStudentCookieOptions(maxAgeMs = STUDENT_COOKIE_MAX_AGE): CookieOptions {
   const isProd = process.env.NODE_ENV === 'production';
+  const forceSecure = process.env.COOKIE_SECURE === 'true';
   return {
     httpOnly: true,
     sameSite: 'lax',
-    secure: isProd,
+    secure: isProd || forceSecure,
     path: '/',
     maxAge: maxAgeMs,
   };

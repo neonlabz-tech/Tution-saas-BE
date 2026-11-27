@@ -33,6 +33,17 @@ export class AllExceptionsFilter implements ExceptionFilter {
         exception,
       );
 
+      if (status === HttpStatus.TOO_MANY_REQUESTS) {
+        let retryAfter: number | string | undefined;
+        if (typeof exceptionResponse === 'object' && exceptionResponse !== null) {
+          retryAfter = (exceptionResponse as Record<string, any>).retryAfter;
+        }
+        if (!retryAfter) {
+          retryAfter = 60;
+        }
+        response.setHeader('Retry-After', String(retryAfter));
+      }
+
       const errorResponse: ErrorResponse = {
         success: false,
         message: Array.isArray(message) ? message.join(', ') : message,
@@ -133,7 +144,10 @@ export class AllExceptionsFilter implements ExceptionFilter {
       [HttpStatus.FORBIDDEN]: 'FORBIDDEN',
       [HttpStatus.NOT_FOUND]: 'NOT_FOUND',
       [HttpStatus.CONFLICT]: 'CONFLICT',
+      [HttpStatus.UNPROCESSABLE_ENTITY]: 'UNPROCESSABLE_ENTITY',
+      [HttpStatus.TOO_MANY_REQUESTS]: 'TOO_MANY_REQUESTS',
       [HttpStatus.INTERNAL_SERVER_ERROR]: 'INTERNAL_SERVER_ERROR',
+      [HttpStatus.SERVICE_UNAVAILABLE]: 'SERVICE_UNAVAILABLE',
     };
     return errorCodeMap[status] || 'UNKNOWN_ERROR';
   }
